@@ -1221,12 +1221,122 @@
         ]
       }
     },
+    "/v1/video/async-generations": {
+      "post": {
+        "summary": "创建视频异步生成任务",
+        "deprecated": false,
+        "description": "提交 Sora2 异步视频生成任务，返回任务 ID 后可轮询查询结果。",
+        "operationId": "createVideoAsyncGeneration",
+        "tags": [
+          "视频生成"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRequest"
+              },
+              "example": {
+                "model": "sora-2",
+                "prompt": "一个美食节目镜头，厨师把意大利面装盘，暖色灯光，镜头平稳推进，无文字，无logo",
+                "duration": 4,
+                "width": 1280,
+                "height": 720
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功创建视频生成任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/video/generations/{task_id}": {
       "get": {
         "summary": "获取视频生成任务状态",
         "deprecated": false,
         "description": "查询视频生成任务的状态和结果。\n\n任务状态：\n- `queued`: 排队中\n- `in_progress`: 生成中\n- `completed`: 已完成\n- `failed`: 失败\n",
         "operationId": "getVideoGeneration",
+        "tags": [
+          "视频生成"
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "任务 ID",
+            "required": true,
+            "example": "abcd1234efgh",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取任务状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskResponse"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/video/async-generations/{task_id}": {
+      "get": {
+        "summary": "获取视频异步生成任务状态",
+        "deprecated": false,
+        "description": "查询 Sora2 异步视频生成任务的状态和结果。",
+        "operationId": "getVideoAsyncGeneration",
         "tags": [
           "视频生成"
         ],
