@@ -1069,6 +1069,7 @@
     "固定价格(每次)": "Фиксированная цена (за каждый раз)",
     "固定价格值": "Значение фиксированной цены",
     "图像生成": "Генерация изображений",
+    "视频生成": "Генерация видео",
     "图标": "Значок",
     "图标使用 react-icons（Simple Icons）或 URL/emoji，例如：github、gitlab、si:google": "Иконка: react-icons (Simple Icons) или URL/emoji, напр.: github, gitlab, si:google",
     "图标使用@lobehub/icons库，如：OpenAI、Claude.Color，支持链式参数：OpenAI.Avatar.type={'platform'}、OpenRouter.Avatar.shape={'square'}，查询所有可用图标请 ": "Используйте библиотеку @lobehub/icons, например: OpenAI, Claude.Color, поддерживаются цепочечные параметры: OpenAI.Avatar.type={'platform'}, OpenRouter.Avatar.shape={'square'}, для просмотра всех доступных иконок, пожалуйста, ",

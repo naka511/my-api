@@ -25,6 +25,51 @@ import type {
   GroupOption,
 } from './types'
 
+export function isVideoGenerationModel(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return (
+    normalized.includes('sora2') ||
+    normalized.includes('sora-2') ||
+    normalized.includes('video-2.0') ||
+    normalized.includes('ko3')
+  )
+}
+
+function extractVideoPrompt(payload: ChatCompletionRequest): string {
+  const userMessages = payload.messages.filter((message) => message.role === 'user')
+  const lastUserMessage = userMessages[userMessages.length - 1]
+  if (!lastUserMessage) return 'Generate a short cinematic video.'
+
+  if (typeof lastUserMessage.content === 'string') {
+    return lastUserMessage.content
+  }
+
+  const textParts = lastUserMessage.content
+    .filter((part) => part.type === 'text' && part.text)
+    .map((part) => part.text)
+
+  return textParts.join('\n') || 'Generate a short cinematic video.'
+}
+
+export async function sendVideoGeneration(
+  payload: ChatCompletionRequest
+): Promise<Record<string, unknown>> {
+  const res = await api.post(
+    API_ENDPOINTS.VIDEO_GENERATIONS,
+    {
+      model: payload.model,
+      group: payload.group,
+      prompt: extractVideoPrompt(payload),
+      seconds: '4',
+      size: '1280x720',
+    },
+    {
+      skipErrorHandler: true,
+    } as Record<string, unknown>
+  )
+  return res.data
+}
+
 /**
  * Send chat completion request (non-streaming)
  */

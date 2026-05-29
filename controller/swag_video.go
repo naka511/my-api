@@ -40,6 +40,40 @@ func VideoGenerations(c *gin.Context) {
 func VideoGenerationsTaskId(c *gin.Context) {
 }
 
+// VideoAsyncGenerations
+// @Summary 异步生成视频
+// @Description 统一异步视频生成接口。兼容 sora2 请求格式，会转换到现有 Sora 视频任务链路。
+// @Tags Video
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "用户认证令牌 (Access-Token: sk-xxxx)"
+// @Param request body dto.VideoRequest true "视频异步生成请求参数"
+// @Success 200 {object} dto.VideoResponse "任务提交结果"
+// @Failure 400 {object} dto.OpenAIError "请求参数错误"
+// @Failure 401 {object} dto.OpenAIError "未授权"
+// @Failure 403 {object} dto.OpenAIError "无权限"
+// @Failure 500 {object} dto.OpenAIError "服务器内部错误"
+// @Router /v1/video/async-generations [post]
+func VideoAsyncGenerations(c *gin.Context) {
+}
+
+// VideoAsyncGenerationsTaskId
+// @Summary 查询异步视频任务
+// @Description 根据任务 ID 查询异步视频生成任务的状态和结果
+// @Tags Video
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param task_id path string true "Task ID"
+// @Success 200 {object} dto.VideoTaskResponse "任务状态和结果"
+// @Failure 400 {object} dto.OpenAIError "请求参数错误"
+// @Failure 401 {object} dto.OpenAIError "未授权"
+// @Failure 403 {object} dto.OpenAIError "无权限"
+// @Failure 500 {object} dto.OpenAIError "服务器内部错误"
+// @Router /v1/video/async-generations/{task_id} [get]
+func VideoAsyncGenerationsTaskId(c *gin.Context) {
+}
+
 // KlingText2VideoGenerations
 // @Summary 可灵文生视频
 // @Description 调用可灵AI文生视频接口，生成视频内容

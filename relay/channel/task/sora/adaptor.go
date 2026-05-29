@@ -45,6 +45,7 @@ type responseTask struct {
 	Model              string `json:"model"`
 	Status             string `json:"status"`
 	Progress           int    `json:"progress"`
+	URL                string `json:"url,omitempty"`
 	CreatedAt          int64  `json:"created_at"`
 	CompletedAt        int64  `json:"completed_at,omitempty"`
 	ExpiresAt          int64  `json:"expires_at,omitempty"`
@@ -133,6 +134,9 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
+	if a.ChannelType == constant.ChannelTypeSora {
+		return fmt.Sprintf("%s/v1/video/async-generations", a.baseURL), nil
+	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
 }
 
@@ -158,6 +162,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if a.ChannelType == constant.ChannelTypeSora {
+				normalizeLinkSkyAsyncVideoBody(bodyMap)
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -219,6 +226,59 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return common.ReaderOnly(storage), nil
 }
 
+func normalizeLinkSkyAsyncVideoBody(body map[string]interface{}) {
+	if model, ok := body["model"].(string); ok {
+		switch model {
+		case "sora-2":
+			body["model"] = "sora2"
+		case "sora-2-pro":
+			body["model"] = "sora2-pro"
+		}
+	}
+	if duration, ok := linkSkyDurationValue(body["duration"]); ok {
+		body["duration"] = duration
+	} else if seconds, ok := linkSkyDurationValue(body["seconds"]); ok {
+		body["duration"] = seconds
+	}
+	if _, ok := body["aspect_ratio"]; !ok {
+		if size, ok := body["size"].(string); ok {
+			switch size {
+			case "1280x720", "1792x1024":
+				body["aspect_ratio"] = "16:9"
+			case "720x1280", "1024x1792":
+				body["aspect_ratio"] = "9:16"
+			}
+		}
+	}
+	if _, ok := body["image_url"]; !ok {
+		if inputReference, ok := body["input_reference"].(string); ok && strings.TrimSpace(inputReference) != "" {
+			body["image_url"] = inputReference
+		}
+	}
+	if _, ok := body["async"]; !ok {
+		body["async"] = true
+	}
+}
+
+func linkSkyDurationValue(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case string:
+		duration, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return 0, false
+		}
+		return duration, true
+	default:
+		return 0, false
+	}
+}
+
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
@@ -264,6 +324,9 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	uri := fmt.Sprintf("%s/v1/videos/%s", baseUrl, taskID)
+	if a.ChannelType == constant.ChannelTypeSora {
+		uri = fmt.Sprintf("%s/v1/video/async-generations/%s", baseUrl, taskID)
+	}
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -304,7 +367,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		taskResult.Url = resTask.URL
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {

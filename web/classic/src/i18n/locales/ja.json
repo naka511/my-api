@@ -1048,6 +1048,7 @@
     "固定价格(每次)": "固定料金（1回あたり）",
     "固定价格值": "固定料金",
     "图像生成": "画像生成",
+    "视频生成": "動画生成",
     "图标": "アイコン",
     "图标使用 react-icons（Simple Icons）或 URL/emoji，例如：github、gitlab、si:google": "アイコンはreact-icons（Simple Icons）またはURL/emojiを使用、例：github、gitlab、si:google",
     "图标使用@lobehub/icons库，如：OpenAI、Claude.Color，支持链式参数：OpenAI.Avatar.type={'platform'}、OpenRouter.Avatar.shape={'square'}，查询所有可用图标请 ": "アイコンは `@lobehub/icons` ライブラリを使用しています（例：OpenAI、Claude.Color）。`OpenAI.Avatar.type={'platform'}`、`OpenRouter.Avatar.shape={'square'}` のようなチェーンパラメータに対応しています。利用可能なすべてのアイコンは、こちらで確認できます。",

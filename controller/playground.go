@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -45,12 +48,21 @@ func Playground(c *gin.Context) {
 	}
 	userCache.WriteContext(c)
 
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if usingGroup == "" {
+		usingGroup = relayInfo.UsingGroup
+	}
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", usingGroup),
+		Group:  usingGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
+
+	if c.GetInt("relay_mode") == relayconstant.RelayModeVideoSubmit {
+		RelayTask(c)
+		return
+	}
 
 	Relay(c, types.RelayFormatOpenAI)
 }

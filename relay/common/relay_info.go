@@ -499,7 +499,9 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
+	if c.GetBool("is_playground") {
+		info.IsPlayground = true
+	} else if strings.HasPrefix(c.Request.URL.Path, "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
 		info.RequestURLPath = "/v1" + info.RequestURLPath
@@ -704,25 +706,31 @@ func (t *TaskSubmitReq) HasImage() bool {
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	type Alias TaskSubmitReq
-	aux := &struct {
-		Metadata json.RawMessage `json:"metadata,omitempty"`
-		Duration json.RawMessage `json:"duration,omitempty"`
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-
-	if err := common.Unmarshal(data, &aux); err != nil {
+	var raw map[string]json.RawMessage
+	if err := common.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	if len(aux.Duration) > 0 {
+	durationRaw := raw["duration"]
+	metadataRaw := raw["metadata"]
+	delete(raw, "duration")
+	delete(raw, "metadata")
+
+	cleanData, err := common.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	if err := common.Unmarshal(cleanData, (*Alias)(t)); err != nil {
+		return err
+	}
+
+	if len(durationRaw) > 0 {
 		var durationInt int
-		if err := common.Unmarshal(aux.Duration, &durationInt); err == nil {
+		if err := common.Unmarshal(durationRaw, &durationInt); err == nil {
 			t.Duration = durationInt
 		} else {
 			var durationStr string
-			if err := common.Unmarshal(aux.Duration, &durationStr); err == nil && durationStr != "" {
+			if err := common.Unmarshal(durationRaw, &durationStr); err == nil && durationStr != "" {
 				if v, err := strconv.Atoi(durationStr); err == nil {
 					t.Duration = v
 				}
@@ -730,9 +738,9 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	if len(aux.Metadata) > 0 {
+	if len(metadataRaw) > 0 {
 		var metadataStr string
-		if err := common.Unmarshal(aux.Metadata, &metadataStr); err == nil && metadataStr != "" {
+		if err := common.Unmarshal(metadataRaw, &metadataStr); err == nil && metadataStr != "" {
 			var metadataObj map[string]interface{}
 			if err := common.Unmarshal([]byte(metadataStr), &metadataObj); err == nil {
 				t.Metadata = metadataObj
@@ -741,7 +749,7 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 
 		var metadataObj map[string]interface{}
-		if err := common.Unmarshal(aux.Metadata, &metadataObj); err == nil {
+		if err := common.Unmarshal(metadataRaw, &metadataObj); err == nil {
 			t.Metadata = metadataObj
 		}
 	}

@@ -1061,6 +1061,7 @@
     "固定价格(每次)": "Prix fixe (par utilisation)",
     "固定价格值": "Valeur de prix fixe",
     "图像生成": "Génération d'images",
+    "视频生成": "Génération de vidéos",
     "图标": "Icône",
     "图标使用 react-icons（Simple Icons）或 URL/emoji，例如：github、gitlab、si:google": "L'icône utilise react-icons (Simple Icons) ou URL/emoji, ex. : github, gitlab, si:google",
     "图标使用@lobehub/icons库，如：OpenAI、Claude.Color，支持链式参数：OpenAI.Avatar.type={'platform'}、OpenRouter.Avatar.shape={'square'}，查询所有可用图标请 ": "L'icône utilise la bibliothèque @lobehub/icons, telle que : OpenAI, Claude.Color, prend en charge les paramètres de chaîne : OpenAI.Avatar.type={'platform'}, OpenRouter.Avatar.shape={'square'}, interroger toutes les icônes disponibles s'il vous plaît ",

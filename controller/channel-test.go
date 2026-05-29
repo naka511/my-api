@@ -48,6 +48,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
+	if isChannelTestVideoModel(channel, modelName) {
+		return string(constant.EndpointTypeOpenAIVideo)
+	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
 	}
@@ -55,6 +58,10 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
 	return normalized
+}
+
+func isChannelTestVideoModel(channel *model.Channel, modelName string) bool {
+	return (channel != nil && channel.Type == constant.ChannelTypeSora) || common.IsOpenAIVideoModel(modelName)
 }
 
 func resolveChannelTestUserID(c *gin.Context) (int, error) {
@@ -185,6 +192,9 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 			newAPIError: newAPIError,
 		}
 	}
+	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo || requestPath == "/v1/video/generations" {
+		return testVideoChannel(c, testUserID, testModel, tik)
+	}
 
 	// Determine relay format based on endpoint type or request path
 	var relayFormat types.RelayFormat
@@ -207,6 +217,8 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
+		case constant.EndpointTypeOpenAIVideo:
+			relayFormat = types.RelayFormatTask
 		default:
 			relayFormat = types.RelayFormatOpenAI
 		}
@@ -515,6 +527,124 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	return testResult{
+		context:     c,
+		localErr:    nil,
+		newAPIError: nil,
+	}
+}
+
+func testVideoChannel(c *gin.Context, testUserID int, testModel string, tik time.Time) testResult {
+	jsonData, err := common.Marshal(relaycommon.TaskSubmitReq{
+		Model:   testModel,
+		Prompt:  "A calm cinematic shot of clouds over a mountain at sunrise.",
+		Seconds: "4",
+		Size:    "1280x720",
+	})
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+		}
+	}
+
+	c.Request.Body = io.NopCloser(bytes.NewReader(jsonData))
+	c.Request.ContentLength = int64(len(jsonData))
+	c.Set("relay_mode", relayconstant.RelayModeVideoSubmit)
+
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+		}
+	}
+	info.IsChannelTest = true
+	info.InitChannelMeta(c)
+	info.OriginModelName = testModel
+	info.UpstreamModelName = testModel
+
+	adaptor := relay.GetTaskAdaptor(relay.GetTaskPlatform(c))
+	if adaptor == nil {
+		err := fmt.Errorf("video channel test is not supported for channel type %d", info.ChannelType)
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeInvalidApiType),
+		}
+	}
+	adaptor.Init(info)
+
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+		err := fmt.Errorf("%s", taskErr.Message)
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCode(taskErr.Code), taskErr.StatusCode),
+		}
+	}
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
+		}
+	}
+
+	requestBody, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
+		}
+	}
+
+	resp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		}
+	}
+	if resp != nil && (resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices) {
+		err := service.RelayErrorHandler(c.Request.Context(), resp, true)
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+		}
+	}
+	if resp != nil {
+		if _, _, taskErr := adaptor.DoResponse(c, resp, info); taskErr != nil {
+			err := fmt.Errorf("%s", taskErr.Message)
+			return testResult{
+				context:     c,
+				localErr:    err,
+				newAPIError: types.NewOpenAIError(err, types.ErrorCode(taskErr.Code), taskErr.StatusCode),
+			}
+		}
+	}
+
+	tok := time.Now()
+	model.RecordConsumeLog(c, testUserID, model.RecordConsumeLogParams{
+		ChannelId:      info.ChannelId,
+		ModelName:      info.OriginModelName,
+		TokenName:      "模型测试",
+		Quota:          0,
+		Content:        "视频模型测试",
+		UseTimeSeconds: int(tok.Sub(tik).Seconds()),
+		IsStream:       false,
+		Group:          info.UsingGroup,
+		Other: map[string]interface{}{
+			"request_path": c.Request.URL.Path,
+		},
+	})
+	common.SysLog(fmt.Sprintf("testing video channel #%d with model %s", info.ChannelId, info.OriginModelName))
+
 	return testResult{
 		context:     c,
 		localErr:    nil,

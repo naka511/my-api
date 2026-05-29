@@ -62,6 +62,7 @@ const ModelTestModal = ({
     'embeddings',
     'image-generation',
     'jina-rerank',
+    'openai-video',
     'openai-response-compact',
   ].includes(selectedEndpointType);
 
@@ -96,6 +97,10 @@ const ModelTestModal = ({
     {
       value: 'image-generation',
       label: t('图像生成') + ' (/v1/images/generations)',
+    },
+    {
+      value: 'openai-video',
+      label: t('视频生成') + ' (/v1/video/generations)',
     },
     { value: 'embeddings', label: 'Embeddings (/v1/embeddings)' },
   ];

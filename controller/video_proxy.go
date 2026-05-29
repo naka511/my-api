@@ -106,7 +106,13 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
 			return
 		}
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
+	case constant.ChannelTypeSora:
+		videoURL = resolveSoraVideoURL(task)
+		if videoURL == "" {
+			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+			req.Header.Set("Authorization", "Bearer "+channel.Key)
+		}
+	case constant.ChannelTypeOpenAI:
 		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
 		req.Header.Set("Authorization", "Bearer "+channel.Key)
 	default:
@@ -169,6 +175,21 @@ func VideoProxy(c *gin.Context) {
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
 	}
+}
+
+func resolveSoraVideoURL(task *model.Task) string {
+	resultURL := strings.TrimSpace(task.GetResultURL())
+	if resultURL != "" && !strings.Contains(resultURL, "/v1/videos/") {
+		return resultURL
+	}
+
+	var data struct {
+		URL string `json:"url"`
+	}
+	if err := common.Unmarshal(task.Data, &data); err == nil && strings.TrimSpace(data.URL) != "" {
+		return strings.TrimSpace(data.URL)
+	}
+	return ""
 }
 
 func writeVideoDataURL(c *gin.Context, dataURL string) error {

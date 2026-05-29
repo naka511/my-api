@@ -429,6 +429,60 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
+function buildVideoSample(lang: Lang, ctx: SampleContext): string {
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const prompt =
+    'A calm cinematic shot of clouds over a mountain at sunrise, no text, no logo.'
+  const body = {
+    model: ctx.modelName,
+    prompt,
+    seconds: '4',
+    size: '1280x720',
+  }
+
+  if (lang === 'curl') {
+    const bodyJson = JSON.stringify(body, null, 2)
+    return [
+      `curl ${url} \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '${bodyJson.replace(/\n/g, '\n     ')}'`,
+    ].join('\n')
+  }
+
+  if (lang === 'python') {
+    return [
+      'import os',
+      'import requests',
+      '',
+      `response = requests.post(`,
+      `    "${url}",`,
+      `    headers={`,
+      `        "Authorization": f"Bearer {os.environ['${ctx.apiKeyEnv}']}",`,
+      `        "Content-Type": "application/json",`,
+      `    },`,
+      `    json=${JSON.stringify(body, null, 4).replace(/true/g, 'True')},`,
+      `)`,
+      `response.raise_for_status()`,
+      `print(response.json())`,
+    ].join('\n')
+  }
+
+  return [
+    `const response = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+    `    'Content-Type': 'application/json',`,
+    `  },`,
+    `  body: JSON.stringify(${JSON.stringify(body, null, 2).replace(/\n/g, '\n  ')}),`,
+    `})`,
+    '',
+    `const data = await response.json()`,
+    `console.log(data)`,
+  ].join('\n')
+}
+
 function buildSample(
   lang: Lang,
   endpointType: string,
@@ -439,6 +493,7 @@ function buildSample(
   if (endpointType === 'embeddings' || endpointType === 'jina-rerank')
     return buildEmbeddingSample(lang, ctx)
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
+  if (endpointType === 'openai-video') return buildVideoSample(lang, ctx)
   return buildChatSample(lang, ctx)
 }
 
