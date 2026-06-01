@@ -14,12 +14,15 @@ var (
 		"dall-e-2",
 		"gpt-image-1",
 		"prefix:imagen-",
-		"flux-",
-		"flux.1-",
+		"flux",
+		"midjourney",
 	}
 	OpenAIVideoModels = []string{
+		"video-2.0",
+		"video-2.0-fast",
 		"sora-2",
 		"sora2",
+		"ko3",
 	}
 	OpenAITextModels = []string{
 		"gpt-",

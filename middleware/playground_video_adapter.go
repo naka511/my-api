@@ -13,7 +13,7 @@ import (
 
 func PlaygroundVideoRequestConvert() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Method != http.MethodPost || c.Request.URL.Path != "/pg/chat/completions" {
+		if c.Request.Method != http.MethodPost {
 			c.Next()
 			return
 		}
@@ -24,45 +24,81 @@ func PlaygroundVideoRequestConvert() gin.HandlerFunc {
 			return
 		}
 
-		modelName, _ := body["model"].(string)
-		if !common.IsOpenAIVideoModel(modelName) {
-			c.Next()
-			return
-		}
-
-		videoBody := buildPlaygroundVideoBody(body)
-		jsonData, err := common.Marshal(videoBody)
-		if err != nil {
-			c.Next()
-			return
-		}
-
-		if oldStorage, exists := c.Get(common.KeyBodyStorage); exists {
-			if storage, ok := oldStorage.(common.BodyStorage); ok {
-				_ = storage.Close()
+		switch c.Request.URL.Path {
+		case "/pg/chat/completions":
+			modelName, _ := body["model"].(string)
+			if !common.IsOpenAIVideoModel(modelName) {
+				c.Next()
+				return
 			}
-		}
-		storage, err := common.CreateBodyStorage(jsonData)
-		if err != nil {
+			if !replacePlaygroundRequest(c, "/v1/video/generations", buildPlaygroundVideoBody(body)) {
+				c.Next()
+				return
+			}
+		case "/pg/images/generations":
+			if !replacePlaygroundRequest(c, "/v1/images/generations", buildPlaygroundImageBody(body)) {
+				c.Next()
+				return
+			}
+		case "/pg/video/generations":
+			if !replacePlaygroundRequest(c, "/v1/video/generations", buildPlaygroundVideoBody(body)) {
+				c.Next()
+				return
+			}
+		default:
 			c.Next()
 			return
 		}
-
-		c.Request.URL.Path = "/v1/video/generations"
-		c.Request.Body = io.NopCloser(bytes.NewReader(jsonData))
-		c.Request.ContentLength = int64(len(jsonData))
-		c.Set("is_playground", true)
-		c.Set(common.KeyRequestBody, jsonData)
-		c.Set(common.KeyBodyStorage, storage)
 
 		c.Next()
 	}
 }
 
+func replacePlaygroundRequest(c *gin.Context, path string, body map[string]any) bool {
+	jsonData, err := common.Marshal(body)
+	if err != nil {
+		return false
+	}
+
+	if oldStorage, exists := c.Get(common.KeyBodyStorage); exists {
+		if storage, ok := oldStorage.(common.BodyStorage); ok {
+			_ = storage.Close()
+		}
+	}
+	storage, err := common.CreateBodyStorage(jsonData)
+	if err != nil {
+		return false
+	}
+
+	c.Request.URL.Path = path
+	c.Request.Body = io.NopCloser(bytes.NewReader(jsonData))
+	c.Request.ContentLength = int64(len(jsonData))
+	c.Set("is_playground", true)
+	c.Set(common.KeyRequestBody, jsonData)
+	c.Set(common.KeyBodyStorage, storage)
+	return true
+}
+
+func buildPlaygroundImageBody(body map[string]any) map[string]any {
+	imageBody := map[string]any{
+		"model":  body["model"],
+		"prompt": extractPlaygroundBodyPrompt(body),
+	}
+	if group, ok := body["group"]; ok {
+		imageBody["group"] = group
+	}
+	for _, key := range []string{"n", "size", "quality", "style", "response_format"} {
+		if value, ok := body[key]; ok {
+			imageBody[key] = value
+		}
+	}
+	return imageBody
+}
+
 func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	videoBody := map[string]any{
 		"model":   body["model"],
-		"prompt":  extractPlaygroundPrompt(body["messages"]),
+		"prompt":  extractPlaygroundBodyPrompt(body),
 		"seconds": "4",
 		"size":    "1280x720",
 	}
@@ -88,6 +124,13 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		videoBody["image_url"] = imageURL
 	}
 	return videoBody
+}
+
+func extractPlaygroundBodyPrompt(body map[string]any) string {
+	if prompt, ok := body["prompt"].(string); ok && strings.TrimSpace(prompt) != "" {
+		return prompt
+	}
+	return extractPlaygroundPrompt(body["messages"])
 }
 
 func extractPlaygroundPrompt(messagesValue any) string {

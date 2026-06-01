@@ -22,8 +22,11 @@ import { useTranslation } from 'react-i18next';
 import { SSE } from 'sse.js';
 import {
   API_ENDPOINTS,
+  MODEL_CAPABILITIES,
   MESSAGE_STATUS,
   DEBUG_TABS,
+  getModelCapability,
+  getPlaygroundEndpoint,
 } from '../../constants/playground.constants';
 import {
   getUserIdFromLocalStorage,
@@ -173,7 +176,7 @@ export const useApiRequest = (
 
   // 非流式请求
   const handleNonStreamRequest = useCallback(
-    async (payload) => {
+    async (payload, endpoint) => {
       setDebugData((prev) => ({
         ...prev,
         request: payload,
@@ -185,7 +188,7 @@ export const useApiRequest = (
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
       try {
-        const response = await fetch(API_ENDPOINTS.CHAT_COMPLETIONS, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -268,6 +271,19 @@ export const useApiRequest = (
             }
             return newMessages;
           });
+        } else {
+          setMessage((prevMessage) => {
+            const newMessages = [...prevMessage];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage?.status === MESSAGE_STATUS.LOADING) {
+              newMessages[newMessages.length - 1] = {
+                ...lastMessage,
+                content: JSON.stringify(data, null, 2),
+                status: MESSAGE_STATUS.COMPLETE,
+              };
+            }
+            return newMessages;
+          });
         }
       } catch (error) {
         console.error('Non-stream request error:', error);
@@ -302,7 +318,7 @@ export const useApiRequest = (
 
   // SSE请求
   const handleSSE = useCallback(
-    (payload) => {
+    (payload, endpoint) => {
       setDebugData((prev) => ({
         ...prev,
         request: payload,
@@ -313,7 +329,7 @@ export const useApiRequest = (
       }));
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
-      const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
+      const source = new SSE(endpoint, {
         headers: {
           'Content-Type': 'application/json',
           'New-Api-User': getUserIdFromLocalStorage(),
@@ -421,7 +437,11 @@ export const useApiRequest = (
           setMessage((prevMessage) => {
             const newMessages = [...prevMessage];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.status !== MESSAGE_STATUS.COMPLETE && lastMessage.status !== MESSAGE_STATUS.ERROR) {
+            if (
+              lastMessage &&
+              lastMessage.status !== MESSAGE_STATUS.COMPLETE &&
+              lastMessage.status !== MESSAGE_STATUS.ERROR
+            ) {
               newMessages[newMessages.length - 1] = {
                 ...lastMessage,
                 content: (lastMessage.content || '') + errorMessage,
@@ -537,10 +557,13 @@ export const useApiRequest = (
   // 发送请求
   const sendRequest = useCallback(
     (payload, isStream) => {
-      if (isStream) {
-        handleSSE(payload);
+      const capability = getModelCapability(payload.model);
+      const endpoint = getPlaygroundEndpoint(payload.model);
+
+      if (capability === MODEL_CAPABILITIES.CHAT && isStream) {
+        handleSSE(payload, endpoint);
       } else {
-        handleNonStreamRequest(payload);
+        handleNonStreamRequest(payload, endpoint);
       }
     },
     [handleSSE, handleNonStreamRequest],

@@ -134,7 +134,7 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
-	if a.ChannelType == constant.ChannelTypeSora {
+	if a.useAsyncVideoAPI() {
 		return fmt.Sprintf("%s/v1/video/async-generations", a.baseURL), nil
 	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
@@ -162,7 +162,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
-			if a.ChannelType == constant.ChannelTypeSora {
+			if a.useAsyncVideoAPI() {
 				normalizeLinkSkyAsyncVideoBody(bodyMap)
 			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
@@ -324,7 +324,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	uri := fmt.Sprintf("%s/v1/videos/%s", baseUrl, taskID)
-	if a.ChannelType == constant.ChannelTypeSora {
+	if a.useAsyncVideoAPI() {
 		uri = fmt.Sprintf("%s/v1/video/async-generations/%s", baseUrl, taskID)
 	}
 
@@ -340,6 +340,11 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
 	return client.Do(req)
+}
+
+func (a *TaskAdaptor) useAsyncVideoAPI() bool {
+	return a.ChannelType == constant.ChannelTypeSora ||
+		strings.Contains(strings.ToLower(a.baseURL), "linksky.top")
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

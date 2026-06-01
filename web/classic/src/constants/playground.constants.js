@@ -76,8 +76,46 @@ export const DEBUG_TABS = {
 // ========== API 相关常量 ==========
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
+  IMAGE_GENERATIONS: '/pg/images/generations',
+  VIDEO_GENERATIONS: '/pg/video/generations',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
+};
+
+export const MODEL_CAPABILITIES = {
+  CHAT: 'chat',
+  IMAGE: 'image',
+  VIDEO: 'video',
+};
+
+const VIDEO_MODELS = new Set(['video-2.0', 'video-2.0-fast', 'sora2', 'ko3']);
+const IMAGE_MODEL_KEYWORDS = ['flux', 'midjourney'];
+
+export const getModelCapability = (modelName = '') => {
+  const normalizedModelName = modelName.toLowerCase();
+
+  if (VIDEO_MODELS.has(normalizedModelName)) {
+    return MODEL_CAPABILITIES.VIDEO;
+  }
+  if (
+    IMAGE_MODEL_KEYWORDS.some((keyword) =>
+      normalizedModelName.includes(keyword),
+    )
+  ) {
+    return MODEL_CAPABILITIES.IMAGE;
+  }
+  return MODEL_CAPABILITIES.CHAT;
+};
+
+export const getPlaygroundEndpoint = (modelName = '') => {
+  switch (getModelCapability(modelName)) {
+    case MODEL_CAPABILITIES.VIDEO:
+      return API_ENDPOINTS.VIDEO_GENERATIONS;
+    case MODEL_CAPABILITIES.IMAGE:
+      return API_ENDPOINTS.IMAGE_GENERATIONS;
+    default:
+      return API_ENDPOINTS.CHAT_COMPLETIONS;
+  }
 };
 
 // ========== 配置默认值 ==========

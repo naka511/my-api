@@ -8,7 +8,7 @@ mkdir -p "$LOG_DIR" "$PID_DIR"
 
 NODE_BIN_DIR="${HOME}/.local/sdk/node-v22.16.0-darwin-arm64/bin"
 GO_BIN_DIR="${HOME}/.local/sdk/go/bin"
-BUN_BIN_DIR="${HOME}/.local/bin"
+BUN_BIN_DIR="${HOME}/.bun/bin"
 export PATH="${NODE_BIN_DIR}:${GO_BIN_DIR}:${BUN_BIN_DIR}:${PATH}"
 export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 
@@ -20,18 +20,10 @@ fi
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}"
 
 echo "Build classic frontend (same as Zeabur)..."
-if [ -x "${NODE_BIN_DIR}/npm" ]; then
-  (cd "$ROOT_DIR/web/classic" && npm run build) >/dev/null
-else
-  (cd "$ROOT_DIR/web/classic" && bun run build) >/dev/null
-fi
+(cd "$ROOT_DIR/web/classic" && bun --bun run build) >/dev/null
 
-echo "Build default frontend..."
-if [ -x "${NODE_BIN_DIR}/npm" ]; then
-  (cd "$ROOT_DIR/web/default" && npm run build) >/dev/null
-else
-  (cd "$ROOT_DIR/web/default" && bun run build) >/dev/null
-fi
+echo "Build default frontend for backend embed..."
+(cd "$ROOT_DIR/web/default" && bun --bun run build) >/dev/null
 
 echo "Build backend binary..."
 (cd "$ROOT_DIR" && go build -o /tmp/new-api-server ./main.go)

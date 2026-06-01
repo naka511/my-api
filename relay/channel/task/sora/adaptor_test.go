@@ -3,6 +3,8 @@ package sora
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,4 +32,32 @@ func TestNormalizeLinkSkyAsyncVideoBodyCoercesExistingDuration(t *testing.T) {
 	normalizeLinkSkyAsyncVideoBody(body)
 
 	require.Equal(t, 10, body["duration"])
+}
+
+func TestBuildRequestURLUsesAsyncEndpointForLinkSkyOpenAIChannel(t *testing.T) {
+	adaptor := &TaskAdaptor{
+		ChannelType: constant.ChannelTypeOpenAI,
+		baseURL:     "https://linksky.top",
+	}
+
+	url, err := adaptor.BuildRequestURL(&relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://linksky.top/v1/video/async-generations", url)
+}
+
+func TestBuildRequestURLKeepsOpenAIVideoEndpointForOtherOpenAIChannels(t *testing.T) {
+	adaptor := &TaskAdaptor{
+		ChannelType: constant.ChannelTypeOpenAI,
+		baseURL:     "https://api.openai.com",
+	}
+
+	url, err := adaptor.BuildRequestURL(&relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://api.openai.com/v1/videos", url)
 }
