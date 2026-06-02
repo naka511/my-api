@@ -19,9 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Card, Select, Typography, Button, Switch } from '@douyinfe/semi-ui';
-import { Sparkles, Users, ToggleLeft, X, Settings } from 'lucide-react';
+import { Clock3, Sparkles, Users, ToggleLeft, X, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { renderGroupOption, selectFilter } from '../../helpers';
+import {
+  MODEL_CAPABILITIES,
+  getModelCapability,
+  getValidVideoDuration,
+  getVideoDurationOptions,
+} from '../../constants/playground.constants';
 import ParameterControl from './ParameterControl';
 import ImageUrlInput from './ImageUrlInput';
 import ConfigManager from './ConfigManager';
@@ -47,6 +53,13 @@ const SettingsPanel = ({
   messages,
 }) => {
   const { t } = useTranslation();
+  const isVideoModel =
+    getModelCapability(inputs.model) === MODEL_CAPABILITIES.VIDEO;
+  const videoDurationOptions = getVideoDurationOptions(inputs.model);
+  const selectedVideoDuration = getValidVideoDuration(
+    inputs.model,
+    inputs.duration,
+  );
 
   const currentConfig = {
     inputs,
@@ -165,7 +178,17 @@ const SettingsPanel = ({
             selection
             filter={selectFilter}
             autoClearSearchValue={false}
-            onChange={(value) => onInputChange('model', value)}
+            onChange={(value) => {
+              onInputChange('model', value);
+              if (
+                getModelCapability(value) === MODEL_CAPABILITIES.VIDEO
+              ) {
+                onInputChange(
+                  'duration',
+                  getValidVideoDuration(value, inputs.duration),
+                );
+              }
+            }}
             value={inputs.model}
             autoComplete='new-password'
             optionList={models}
@@ -175,6 +198,29 @@ const SettingsPanel = ({
             disabled={customRequestMode}
           />
         </div>
+
+        {isVideoModel && (
+          <div className={customRequestMode ? 'opacity-50' : ''}>
+            <div className='flex items-center gap-2 mb-2'>
+              <Clock3 size={16} className='text-gray-500' />
+              <Typography.Text strong className='text-sm'>
+                {t('视频时长')}
+              </Typography.Text>
+            </div>
+            <Select
+              name='duration'
+              value={selectedVideoDuration}
+              onChange={(value) => onInputChange('duration', value)}
+              optionList={videoDurationOptions.map((duration) => ({
+                label: `${duration} ${t('秒')}`,
+                value: duration,
+              }))}
+              style={{ width: '100%' }}
+              className='!rounded-lg'
+              disabled={customRequestMode}
+            />
+          </div>
+        )}
 
         {/* 图片URL输入 */}
         <div className={customRequestMode ? 'opacity-50' : ''}>

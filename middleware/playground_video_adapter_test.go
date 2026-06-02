@@ -57,6 +57,18 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 				"size":    "1280x720",
 			},
 		},
+		{
+			name:         "video duration selection is preserved",
+			path:         "/pg/video/generations",
+			body:         `{"model":"video-2.0-fast","duration":12,"messages":[{"role":"user","content":"longer video"}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":    "video-2.0-fast",
+				"prompt":   "longer video",
+				"duration": float64(12),
+				"size":     "1280x720",
+			},
+		},
 	}
 
 	for _, test := range tests {

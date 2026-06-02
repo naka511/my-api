@@ -88,7 +88,25 @@ export const MODEL_CAPABILITIES = {
   VIDEO: 'video',
 };
 
-const VIDEO_MODELS = new Set(['video-2.0', 'video-2.0-fast', 'sora2', 'ko3']);
+const createDurationRange = (start, end) =>
+  Array.from({ length: end - start + 1 }, (_, index) => start + index);
+
+export const VIDEO_MODEL_CONFIG = {
+  'video-2.0': {
+    durations: createDurationRange(3, 15),
+  },
+  'video-2.0-fast': {
+    durations: createDurationRange(3, 15),
+  },
+  sora2: {
+    durations: [4, 8, 12],
+  },
+  ko3: {
+    durations: [4, 8, 12],
+  },
+};
+
+const VIDEO_MODELS = new Set(Object.keys(VIDEO_MODEL_CONFIG));
 const IMAGE_MODEL_KEYWORDS = ['flux', 'midjourney'];
 
 export const getModelCapability = (modelName = '') => {
@@ -118,6 +136,18 @@ export const getPlaygroundEndpoint = (modelName = '') => {
   }
 };
 
+export const getVideoDurationOptions = (modelName = '') =>
+  VIDEO_MODEL_CONFIG[modelName.toLowerCase()]?.durations || [4];
+
+export const getValidVideoDuration = (modelName = '', duration) => {
+  const durationOptions = getVideoDurationOptions(modelName);
+  const numericDuration = Number(duration);
+
+  return durationOptions.includes(numericDuration)
+    ? numericDuration
+    : durationOptions[0];
+};
+
 // ========== 配置默认值 ==========
 export const DEFAULT_CONFIG = {
   inputs: {
@@ -129,6 +159,7 @@ export const DEFAULT_CONFIG = {
     frequency_penalty: 0,
     presence_penalty: 0,
     seed: null,
+    duration: 4,
     stream: true,
     imageEnabled: false,
     imageUrls: [''],

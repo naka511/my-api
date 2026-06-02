@@ -97,10 +97,9 @@ func buildPlaygroundImageBody(body map[string]any) map[string]any {
 
 func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	videoBody := map[string]any{
-		"model":   body["model"],
-		"prompt":  extractPlaygroundBodyPrompt(body),
-		"seconds": "4",
-		"size":    "1280x720",
+		"model":  body["model"],
+		"prompt": extractPlaygroundBodyPrompt(body),
+		"size":   "1280x720",
 	}
 	if group, ok := body["group"]; ok {
 		videoBody["group"] = group
@@ -110,6 +109,8 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	}
 	if seconds, ok := body["seconds"]; ok {
 		videoBody["seconds"] = seconds
+	} else if _, ok := videoBody["duration"]; !ok {
+		videoBody["seconds"] = "4"
 	}
 	if size, ok := body["size"]; ok {
 		videoBody["size"] = size

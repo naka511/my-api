@@ -24,7 +24,12 @@ import {
   isValidMessage,
 } from './utils';
 import axios from 'axios';
-import { MESSAGE_ROLES } from '../constants/playground.constants';
+import {
+  MESSAGE_ROLES,
+  MODEL_CAPABILITIES,
+  getModelCapability,
+  getValidVideoDuration,
+} from '../constants/playground.constants';
 
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -134,6 +139,10 @@ export const buildApiPayload = (
     messages: processedMessages,
     stream: inputs.stream,
   };
+
+  if (getModelCapability(inputs.model) === MODEL_CAPABILITIES.VIDEO) {
+    payload.duration = getValidVideoDuration(inputs.model, inputs.duration);
+  }
 
   // 添加启用的参数
   const parameterMappings = {
