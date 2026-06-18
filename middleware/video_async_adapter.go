@@ -66,8 +66,10 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 
 	if _, ok := body["seconds"]; !ok {
 		if duration, ok := body["duration"]; ok {
-			body["seconds"] = duration
+			body["seconds"] = normalizeVideoSeconds(duration, "4")
 		}
+	} else {
+		body["seconds"] = normalizeVideoSeconds(body["seconds"], "4")
 	}
 
 	if _, ok := body["size"]; !ok {

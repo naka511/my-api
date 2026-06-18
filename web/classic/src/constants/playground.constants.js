@@ -93,13 +93,28 @@ const createDurationRange = (start, end) =>
 
 export const VIDEO_MODEL_CONFIG = {
   'video-2.0': {
-    durations: createDurationRange(3, 15),
+    durations: createDurationRange(4, 15),
   },
   'video-2.0-fast': {
-    durations: createDurationRange(3, 15),
+    durations: createDurationRange(4, 15),
   },
   sora2: {
     durations: [4, 8, 12],
+  },
+  veo31: {
+    durations: [4, 6, 8],
+  },
+  'veo31-fast': {
+    durations: [4, 6, 8],
+  },
+  'veo31-ref': {
+    durations: [4, 6, 8],
+  },
+  'kling-v3': {
+    durations: createDurationRange(3, 15),
+  },
+  'grok-imagine-video': {
+    durations: [6, 10],
   },
   ko3: {
     durations: [4, 8, 12],
@@ -107,7 +122,7 @@ export const VIDEO_MODEL_CONFIG = {
 };
 
 const VIDEO_MODELS = new Set(Object.keys(VIDEO_MODEL_CONFIG));
-const IMAGE_MODEL_KEYWORDS = ['flux', 'midjourney'];
+const IMAGE_MODEL_KEYWORDS = ['flux', 'midjourney', 'nano-banana', 'gpt-image2'];
 
 export const getModelCapability = (modelName = '') => {
   const normalizedModelName = modelName.toLowerCase();

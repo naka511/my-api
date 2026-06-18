@@ -2,6 +2,7 @@ package sora
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -41,11 +43,15 @@ type ImageURL struct {
 type responseTask struct {
 	ID                 string `json:"id"`
 	TaskID             string `json:"task_id,omitempty"` //兼容旧接口
+	RequestID          string `json:"request_id,omitempty"`
+	PollURL            string `json:"poll_url,omitempty"`
 	Object             string `json:"object"`
 	Model              string `json:"model"`
 	Status             string `json:"status"`
 	Progress           int    `json:"progress"`
 	URL                string `json:"url,omitempty"`
+	VideoURL           string `json:"video_url,omitempty"`
+	ResultURL          string `json:"result_url,omitempty"`
 	CreatedAt          int64  `json:"created_at"`
 	CompletedAt        int64  `json:"completed_at,omitempty"`
 	ExpiresAt          int64  `json:"expires_at,omitempty"`
@@ -56,6 +62,7 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Data json.RawMessage `json:"data,omitempty"`
 }
 
 // ============================
@@ -301,9 +308,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	upstreamID := dResp.ID
+	upstreamID := dResp.upstreamTaskID()
 	if upstreamID == "" {
-		upstreamID = dResp.TaskID
+		upstreamID = upstreamTaskIDFromResponseBody(responseBody)
 	}
 	if upstreamID == "" {
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
@@ -317,6 +324,103 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	return upstreamID, responseBody, nil
 }
 
+func (r responseTask) upstreamTaskID() string {
+	for _, candidate := range []string{
+		r.ID,
+		r.TaskID,
+		r.RequestID,
+		taskIDFromPollURL(r.PollURL),
+	} {
+		if strings.TrimSpace(candidate) != "" {
+			return strings.TrimSpace(candidate)
+		}
+	}
+
+	if len(r.Data) == 0 {
+		return ""
+	}
+	var nested responseTask
+	if err := common.Unmarshal(r.Data, &nested); err != nil {
+		return ""
+	}
+	return nested.upstreamTaskID()
+}
+
+func upstreamTaskIDFromResponseBody(responseBody []byte) string {
+	return upstreamTaskIDFromJSON(gjson.ParseBytes(responseBody))
+}
+
+func upstreamTaskIDFromJSON(result gjson.Result) string {
+	if !result.Exists() {
+		return ""
+	}
+	if result.IsObject() {
+		for _, key := range []string{
+			"id",
+			"task_id",
+			"taskId",
+			"request_id",
+			"requestId",
+			"generation_id",
+			"generationId",
+			"job_id",
+			"jobId",
+			"uuid",
+		} {
+			if candidate := strings.TrimSpace(result.Get(key).String()); candidate != "" {
+				return candidate
+			}
+		}
+		for _, key := range []string{"poll_url", "pollUrl"} {
+			if candidate := taskIDFromPollURL(result.Get(key).String()); candidate != "" {
+				return candidate
+			}
+		}
+		for _, key := range []string{"data", "result", "task", "video", "generation", "output"} {
+			if candidate := upstreamTaskIDFromJSON(result.Get(key)); candidate != "" {
+				return candidate
+			}
+		}
+		var candidate string
+		result.ForEach(func(_, value gjson.Result) bool {
+			if !value.IsObject() && !value.IsArray() {
+				return true
+			}
+			candidate = upstreamTaskIDFromJSON(value)
+			return candidate == ""
+		})
+		return candidate
+	}
+	if result.IsArray() {
+		var candidate string
+		result.ForEach(func(_, value gjson.Result) bool {
+			candidate = upstreamTaskIDFromJSON(value)
+			return candidate == ""
+		})
+		return candidate
+	}
+	if result.Type == gjson.String {
+		return strings.TrimSpace(result.String())
+	}
+	return ""
+}
+
+func taskIDFromPollURL(pollURL string) string {
+	pollURL = strings.TrimSpace(pollURL)
+	if pollURL == "" {
+		return ""
+	}
+	if beforeQuery, _, found := strings.Cut(pollURL, "?"); found {
+		pollURL = beforeQuery
+	}
+	pollURL = strings.TrimRight(pollURL, "/")
+	if pollURL == "" {
+		return ""
+	}
+	parts := strings.Split(pollURL, "/")
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
 // FetchTask fetch task status
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
 	taskID, ok := body["task_id"].(string)
@@ -325,7 +429,8 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	uri := fmt.Sprintf("%s/v1/videos/%s", baseUrl, taskID)
-	if a.useAsyncVideoAPI() {
+	modelName, _ := body["model"].(string)
+	if a.useAsyncVideoAPI(modelName) {
 		uri = fmt.Sprintf("%s/v1/video/async-generations/%s", baseUrl, taskID)
 	}
 
@@ -387,28 +492,174 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		Code: 0,
 	}
 
-	switch resTask.Status {
-	case "queued", "pending":
+	status := taskStatusFromResponseBody(respBody)
+	if status == "" {
+		status = resTask.Status
+	}
+
+	if status == "" && resultURLFromResponseBody(respBody) != "" {
+		status = "completed"
+	}
+	if status == "" && successLikeResponseBody(respBody) {
+		status = "in_progress"
+	}
+
+	switch normalizeTaskStatus(status) {
+	case "queued":
 		taskResult.Status = model.TaskStatusQueued
-	case "processing", "in_progress":
+	case "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
-		taskResult.Url = resTask.URL
-	case "failed", "cancelled":
+		taskResult.Url = resultURLFromResponseBody(respBody)
+	case "failed":
 		taskResult.Status = model.TaskStatusFailure
-		if resTask.Error != nil {
+		if reason := errorMessageFromResponseBody(respBody); reason != "" {
+			taskResult.Reason = reason
+		} else if resTask.Error != nil {
 			taskResult.Reason = resTask.Error.Message
 		} else {
 			taskResult.Reason = "task failed"
 		}
 	default:
 	}
-	if resTask.Progress > 0 && resTask.Progress < 100 {
-		taskResult.Progress = fmt.Sprintf("%d%%", resTask.Progress)
+	progress := progressFromResponseBody(respBody)
+	if progress > 0 && progress < 100 {
+		taskResult.Progress = fmt.Sprintf("%d%%", progress)
 	}
 
 	return &taskResult, nil
+}
+
+func taskStatusFromResponseBody(respBody []byte) string {
+	result := gjson.ParseBytes(respBody)
+	for _, path := range []string{
+		"status",
+		"state",
+		"task_status",
+		"taskStatus",
+		"status_code",
+		"statusCode",
+		"data.status",
+		"data.state",
+		"data.task_status",
+		"data.taskStatus",
+		"data.status_code",
+		"data.statusCode",
+		"data.output.status",
+		"data.output.task_status",
+		"result.status",
+		"result.state",
+		"result.task_status",
+		"result.taskStatus",
+		"task.status",
+		"task.state",
+		"task.task_status",
+		"task.taskStatus",
+		"output.status",
+		"output.task_status",
+	} {
+		if status := strings.TrimSpace(result.Get(path).String()); status != "" {
+			return strings.ToLower(status)
+		}
+	}
+	return ""
+}
+
+func normalizeTaskStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	status = strings.ReplaceAll(status, "-", "_")
+	status = strings.ReplaceAll(status, " ", "_")
+	switch status {
+	case "queued", "queueing", "pending", "submitted", "created", "not_start", "not_started":
+		return "queued"
+	case "processing", "in_progress", "running", "generating", "working", "started":
+		return "in_progress"
+	case "completed", "complete", "success", "succeeded", "succeed", "finished", "done":
+		return "completed"
+	case "failed", "failure", "fail", "error", "errored", "cancelled", "canceled":
+		return "failed"
+	default:
+		return status
+	}
+}
+
+func progressFromResponseBody(respBody []byte) int {
+	result := gjson.ParseBytes(respBody)
+	for _, path := range []string{"progress", "data.progress", "result.progress", "task.progress"} {
+		progress := result.Get(path)
+		if progress.Exists() {
+			return int(progress.Int())
+		}
+	}
+	return 0
+}
+
+func resultURLFromResponseBody(respBody []byte) string {
+	result := gjson.ParseBytes(respBody)
+	for _, path := range []string{
+		"video_url",
+		"url",
+		"result_url",
+		"data.video_url",
+		"data.url",
+		"data.result_url",
+		"data.0.url",
+		"data.data.0.url",
+		"data.output.video_url",
+		"data.output.url",
+		"data.output.result_url",
+		"data.output.0.url",
+		"data.result.video_url",
+		"data.result.url",
+		"data.result.result_url",
+		"data.result.0.url",
+		"result.video_url",
+		"result.url",
+		"result.result_url",
+		"result.data.0.url",
+		"output.video_url",
+		"output.url",
+		"output.result_url",
+		"output.data.0.url",
+		"task.video_url",
+		"task.url",
+		"task.result_url",
+	} {
+		if url := strings.TrimSpace(result.Get(path).String()); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func successLikeResponseBody(respBody []byte) bool {
+	result := gjson.ParseBytes(respBody)
+	for _, path := range []string{"code", "message", "status_code", "statusCode"} {
+		value := strings.ToLower(strings.TrimSpace(result.Get(path).String()))
+		switch value {
+		case "success", "ok", "0":
+			return true
+		}
+	}
+	return false
+}
+
+func errorMessageFromResponseBody(respBody []byte) string {
+	result := gjson.ParseBytes(respBody)
+	for _, path := range []string{
+		"error.message",
+		"data.error.message",
+		"result.error.message",
+		"task.error.message",
+		"error",
+		"data.error",
+	} {
+		if message := strings.TrimSpace(result.Get(path).String()); message != "" {
+			return message
+		}
+	}
+	return ""
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {

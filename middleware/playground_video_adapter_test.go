@@ -66,6 +66,7 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 				"model":    "video-2.0-fast",
 				"prompt":   "longer video",
 				"duration": float64(12),
+				"seconds":  "12",
 				"size":     "1280x720",
 			},
 		},

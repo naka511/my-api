@@ -16,12 +16,19 @@ var (
 		"prefix:imagen-",
 		"flux",
 		"midjourney",
+		"nano-banana",
+		"gpt-image2",
 	}
 	OpenAIVideoModels = []string{
 		"video-2.0",
 		"video-2.0-fast",
 		"sora-2",
 		"sora2",
+		"veo31",
+		"veo31-fast",
+		"veo31-ref",
+		"kling-v3",
+		"grok-imagine-video",
 		"ko3",
 	}
 	OpenAITextModels = []string{

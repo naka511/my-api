@@ -25,7 +25,7 @@ func TestNormalizeAsyncVideoRequestForSora2(t *testing.T) {
 	normalizeAsyncVideoRequest(body)
 
 	require.Equal(t, "sora-2", body["model"])
-	require.Equal(t, float64(4), body["seconds"])
+	require.Equal(t, "4", body["seconds"])
 	require.Equal(t, "1280x720", body["size"])
 	require.Equal(t, "https://example.com/reference.png", body["input_reference"])
 }
@@ -43,7 +43,7 @@ func TestVideoAsyncRequestConvertRewritesPathAndBody(t *testing.T) {
 		var body map[string]any
 		require.NoError(t, common.Unmarshal(rawBody.([]byte), &body))
 		require.Equal(t, "sora-2", body["model"])
-		require.Equal(t, float64(10), body["seconds"])
+		require.Equal(t, "10", body["seconds"])
 		require.Equal(t, "720x1280", body["size"])
 
 		c.Status(http.StatusNoContent)

@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -79,4 +81,80 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
+}
+
+func TestNormalizeChannelTestEndpointForcesVideoModelsToVideoEndpoint(t *testing.T) {
+	tests := []struct {
+		name         string
+		channel      *model.Channel
+		modelName    string
+		endpointType string
+	}{
+		{
+			name:         "video 2 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "video-2.0",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "video 2 fast model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "video-2.0-fast",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "sora2 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "sora2",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "ko3 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "ko3",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "veo31 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "veo31",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "kling v3 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "kling-v3",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "grok imagine video model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "grok-imagine-video",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "sora channel overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeSora},
+			modelName:    "custom-video-model",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			endpointType := normalizeChannelTestEndpoint(test.channel, test.modelName, test.endpointType)
+
+			require.Equal(t, string(constant.EndpointTypeOpenAIVideo), endpointType)
+		})
+	}
+}
+
+func TestNormalizeChannelTestEndpointKeepsExplicitEndpointForNonVideoModel(t *testing.T) {
+	endpointType := normalizeChannelTestEndpoint(
+		&model.Channel{Type: constant.ChannelTypeOpenAI},
+		"gpt-4o",
+		string(constant.EndpointTypeOpenAIResponse),
+	)
+
+	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), endpointType)
 }

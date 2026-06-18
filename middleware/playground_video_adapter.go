@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -108,23 +109,75 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		videoBody["duration"] = duration
 	}
 	if seconds, ok := body["seconds"]; ok {
-		videoBody["seconds"] = seconds
+		videoBody["seconds"] = normalizeVideoSeconds(seconds, "4")
+	} else if duration, ok := videoBody["duration"]; ok {
+		videoBody["seconds"] = normalizeVideoSeconds(duration, "4")
 	} else if _, ok := videoBody["duration"]; !ok {
 		videoBody["seconds"] = "4"
 	}
 	if size, ok := body["size"]; ok {
 		videoBody["size"] = size
 	}
-	if aspectRatio, ok := body["aspect_ratio"]; ok {
-		videoBody["aspect_ratio"] = aspectRatio
-	}
-	if inputReference, ok := body["input_reference"]; ok {
-		videoBody["input_reference"] = inputReference
-	}
-	if imageURL, ok := body["image_url"]; ok {
-		videoBody["image_url"] = imageURL
+	for _, key := range []string{
+		"aspect_ratio",
+		"resolution",
+		"reference_mode",
+		"generate_audio",
+		"generateAudio",
+		"resolution_name",
+		"preset",
+		"input_reference",
+		"image_url",
+		"image_urls",
+		"image_reference",
+	} {
+		if value, ok := body[key]; ok {
+			videoBody[key] = value
+		}
 	}
 	return videoBody
+}
+
+func normalizeVideoSeconds(value any, fallback string) string {
+	switch v := value.(type) {
+	case string:
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	case float64:
+		if v > 0 {
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		}
+	case float32:
+		if v > 0 {
+			return strconv.FormatFloat(float64(v), 'f', -1, 32)
+		}
+	case int:
+		if v > 0 {
+			return strconv.Itoa(v)
+		}
+	case int64:
+		if v > 0 {
+			return strconv.FormatInt(v, 10)
+		}
+	case int32:
+		if v > 0 {
+			return strconv.FormatInt(int64(v), 10)
+		}
+	case uint:
+		if v > 0 {
+			return strconv.FormatUint(uint64(v), 10)
+		}
+	case uint64:
+		if v > 0 {
+			return strconv.FormatUint(v, 10)
+		}
+	case uint32:
+		if v > 0 {
+			return strconv.FormatUint(uint64(v), 10)
+		}
+	}
+	return fallback
 }
 
 func extractPlaygroundBodyPrompt(body map[string]any) string {

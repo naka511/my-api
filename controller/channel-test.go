@@ -45,11 +45,11 @@ type testResult struct {
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
-	if normalized != "" {
-		return normalized
-	}
 	if isChannelTestVideoModel(channel, modelName) {
 		return string(constant.EndpointTypeOpenAIVideo)
+	}
+	if normalized != "" {
+		return normalized
 	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
@@ -618,8 +618,11 @@ func testVideoChannel(c *gin.Context, testUserID int, testModel string, tik time
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 		}
 	}
+	taskID := ""
 	if resp != nil {
-		if _, _, taskErr := adaptor.DoResponse(c, resp, info); taskErr != nil {
+		var taskErr *dto.TaskError
+		taskID, _, taskErr = adaptor.DoResponse(c, resp, info)
+		if taskErr != nil {
 			err := fmt.Errorf("%s", taskErr.Message)
 			return testResult{
 				context:     c,
@@ -641,6 +644,7 @@ func testVideoChannel(c *gin.Context, testUserID int, testModel string, tik time
 		Group:          info.UsingGroup,
 		Other: map[string]interface{}{
 			"request_path": c.Request.URL.Path,
+			"task_id":      taskID,
 		},
 	})
 	common.SysLog(fmt.Sprintf("testing video channel #%d with model %s", info.ChannelId, info.OriginModelName))
