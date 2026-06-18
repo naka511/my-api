@@ -134,7 +134,7 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
-	if a.useAsyncVideoAPI() {
+	if a.useAsyncVideoAPI(upstreamModelName(info)) {
 		return fmt.Sprintf("%s/v1/video/async-generations", a.baseURL), nil
 	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
@@ -161,8 +161,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if strings.HasPrefix(contentType, "application/json") {
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
-			bodyMap["model"] = info.UpstreamModelName
-			if a.useAsyncVideoAPI() {
+			modelName := upstreamModelName(info)
+			bodyMap["model"] = modelName
+			if a.useAsyncVideoAPI(modelName) {
 				normalizeLinkSkyAsyncVideoBody(bodyMap)
 			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
@@ -342,9 +343,30 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	return client.Do(req)
 }
 
-func (a *TaskAdaptor) useAsyncVideoAPI() bool {
+func (a *TaskAdaptor) useAsyncVideoAPI(modelNames ...string) bool {
+	for _, modelName := range modelNames {
+		if isLinkSkyAsyncVideoModel(modelName) {
+			return true
+		}
+	}
 	return a.ChannelType == constant.ChannelTypeSora ||
 		strings.Contains(strings.ToLower(a.baseURL), "linksky.top")
+}
+
+func upstreamModelName(info *relaycommon.RelayInfo) string {
+	if info != nil && info.ChannelMeta != nil {
+		return info.UpstreamModelName
+	}
+	return ""
+}
+
+func isLinkSkyAsyncVideoModel(modelName string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "video-2.0", "video-2.0-fast", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

@@ -61,3 +61,18 @@ func TestBuildRequestURLKeepsOpenAIVideoEndpointForOtherOpenAIChannels(t *testin
 	require.NoError(t, err)
 	require.Equal(t, "https://api.openai.com/v1/videos", url)
 }
+
+func TestBuildRequestURLUsesAsyncEndpointForLeoGoModelAlias(t *testing.T) {
+	adaptor := &TaskAdaptor{
+		ChannelType: constant.ChannelTypeOpenAI,
+		baseURL:     "https://example-leogo.test",
+	}
+
+	url, err := adaptor.BuildRequestURL(&relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: "video-2.0-fast"},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://example-leogo.test/v1/video/async-generations", url)
+}
