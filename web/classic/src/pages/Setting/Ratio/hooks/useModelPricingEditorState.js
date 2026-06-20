@@ -123,6 +123,17 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
 
 const buildModelState = (name, sourceMaps) => {
   const billingMode = sourceMaps.ModelBillingMode?.[name];
+  if (billingMode === 'fixed_price') {
+    const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+    return {
+      ...EMPTY_MODEL,
+      name,
+      billingMode: 'fixed-price',
+      fixedPrice,
+      rawRatios: { ...EMPTY_MODEL.rawRatios },
+      hasConflict: false,
+    };
+  }
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
     const { billingExpr, requestRuleExpr } =
@@ -303,7 +314,14 @@ export const buildSummaryText = (model, t) => {
     return `${t('阶梯计费')} (${tierCount} ${t('档')})${requestRuleSuffix}`;
   }
 
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
+  if (
+    (model.billingMode === 'per-request' ||
+      model.billingMode === 'fixed-price') &&
+    hasValue(model.fixedPrice)
+  ) {
+    if (model.billingMode === 'fixed-price') {
+      return `${t('固定收费')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
+    }
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
   }
 
@@ -346,7 +364,7 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request') {
+  if (model.billingMode === 'per-request' || model.billingMode === 'fixed-price') {
     if (hasValue(model.fixedPrice)) {
       result.ModelPrice = toNormalizedNumber(model.fixedPrice);
     }
@@ -487,7 +505,7 @@ export const buildPreviewRows = (model, t) => {
     return rows;
   }
 
-  if (model.billingMode === 'per-request') {
+  if (model.billingMode === 'per-request' || model.billingMode === 'fixed-price') {
     const rows = [
       {
         key: 'ModelPrice',
@@ -495,6 +513,13 @@ export const buildPreviewRows = (model, t) => {
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
       },
     ];
+    if (model.billingMode === 'fixed-price') {
+      rows.unshift({
+        key: 'BillingMode',
+        label: 'ModelBillingMode',
+        value: 'fixed_price',
+      });
+    }
     return rows;
   }
 
@@ -1049,6 +1074,9 @@ export function useModelPricingEditorState({
             tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
             tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
           }
+        } else if (model.billingMode === 'fixed-price') {
+          tieredOutput['billing_setting.billing_mode'][model.name] =
+            'fixed_price';
         }
 
         // Always serialize ratio/price values for all models (including

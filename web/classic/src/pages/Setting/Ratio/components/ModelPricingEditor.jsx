@@ -54,6 +54,20 @@ import TieredPricingEditor from './TieredPricingEditor';
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
+const getModeTagColor = (mode) => {
+  if (mode === 'per-request') return 'teal';
+  if (mode === 'fixed-price') return 'green';
+  if (mode === 'tiered_expr') return 'amber';
+  return 'violet';
+};
+
+const getModeLabel = (model, t, getExprModeLabel) => {
+  if (model?.billingMode === 'per-request') return t('按次计费');
+  if (model?.billingMode === 'fixed-price') return t('固定收费');
+  if (model?.billingMode === 'tiered_expr') return getExprModeLabel(model);
+  return t('按量计费');
+};
+
 const PriceInput = ({
   label,
   value,
@@ -187,20 +201,8 @@ export default function ModelPricingEditor({
         dataIndex: 'billingMode',
         key: 'billingMode',
         render: (_, record) => (
-          <Tag
-            color={
-              record.billingMode === 'per-request'
-                ? 'teal'
-                : record.billingMode === 'tiered_expr'
-                  ? 'amber'
-                  : 'violet'
-            }
-          >
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : record.billingMode === 'tiered_expr'
-                ? getExprModeLabel(record)
-                : t('按量计费')}
+          <Tag color={getModeTagColor(record.billingMode)}>
+            {getModeLabel(record, t, getExprModeLabel)}
           </Tag>
         ),
       },
@@ -376,20 +378,8 @@ export default function ModelPricingEditor({
             title={selectedModel ? selectedModel.name : t('模型计费编辑器')}
             headerExtraContent={
               selectedModel ? (
-                <Tag
-                  color={
-                    selectedModel.billingMode === 'per-request'
-                      ? 'teal'
-                      : selectedModel.billingMode === 'tiered_expr'
-                        ? 'amber'
-                        : 'blue'
-                  }
-                >
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : selectedModel.billingMode === 'tiered_expr'
-                      ? getExprModeLabel(selectedModel)
-                      : t('按量计费')}
+                <Tag color={getModeTagColor(selectedModel.billingMode)}>
+                  {getModeLabel(selectedModel, t, getExprModeLabel)}
                 </Tag>
               ) : null
             }
@@ -414,11 +404,12 @@ export default function ModelPricingEditor({
                   >
                     <Radio value='per-token'>{t('按量计费')}</Radio>
                     <Radio value='per-request'>{t('按次计费')}</Radio>
+                    <Radio value='fixed-price'>{t('固定收费')}</Radio>
                     <Radio value='tiered_expr'>{t('表达式/阶梯计费')}</Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
-                      '普通按量/按次直接填价格就行；如果价格要跟请求参数或请求头联动，请切到表达式/阶梯计费。',
+                      '普通按量/按次直接填价格就行；固定收费会忽略 seconds、duration 等参数倍率；如果价格要跟请求参数或请求头联动，请切到表达式/阶梯计费。',
                     )}
                   </div>
                 </div>
@@ -440,14 +431,23 @@ export default function ModelPricingEditor({
                   </Card>
                 ) : null}
 
-                {selectedModel.billingMode === 'per-request' ? (
+                {selectedModel.billingMode === 'per-request' ||
+                selectedModel.billingMode === 'fixed-price' ? (
                   <PriceInput
-                    label={t('固定价格')}
+                    label={
+                      selectedModel.billingMode === 'fixed-price'
+                        ? t('固定收费价格')
+                        : t('按次价格')
+                    }
                     value={selectedModel.fixedPrice}
                     placeholder={t('输入每次调用价格')}
                     suffix={t('$/次')}
                     onChange={(value) => handleNumericFieldChange('fixedPrice', value)}
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
+                    extraText={
+                      selectedModel.billingMode === 'fixed-price'
+                        ? t('生成一次固定扣费，seconds / duration 不参与计费。')
+                        : t('适合 MJ / 任务类等按次收费模型，可继续使用参数倍率。')
+                    }
                   />
                 ) : selectedModel.billingMode === 'tiered_expr' ? (
                   <TieredPricingEditor
