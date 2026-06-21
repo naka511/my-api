@@ -26,6 +26,7 @@ import DashboardHeader from './DashboardHeader';
 import StatsCards from './StatsCards';
 import ChartsPanel from './ChartsPanel';
 import ApiInfoPanel from './ApiInfoPanel';
+import TaskSummaryPanel from '../table/usage-logs/TaskSummaryPanel';
 import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
@@ -102,6 +103,7 @@ const Dashboard = () => {
       }
     });
     await loadUserData();
+    await dashboardData.loadTaskSummaryData();
     await dashboardData.loadUptimeData();
   };
 
@@ -180,6 +182,16 @@ const Dashboard = () => {
         getTrendSpec={getTrendSpec}
         CARD_PROPS={CARD_PROPS}
         CHART_CONFIG={CHART_CONFIG}
+      />
+
+      <TaskSummaryPanel
+        t={dashboardData.t}
+        loading={dashboardData.taskSummaryLoading}
+        summary={dashboardData.taskSummary}
+        dateRange={dashboardData.taskSummaryDateRange}
+        onDateRangeChange={dashboardData.handleTaskSummaryDateRangeChange}
+        onQuery={dashboardData.handleTaskSummaryQuery}
+        onReset={dashboardData.handleTaskSummaryReset}
       />
 
       {/* API信息和图表面板 */}

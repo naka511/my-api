@@ -18,9 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Avatar, Skeleton } from '@douyinfe/semi-ui';
+import { Card, Avatar, Skeleton, DatePicker, Button } from '@douyinfe/semi-ui';
 import { IconHistogram } from '@douyinfe/semi-icons';
 import { Activity, Image, Video } from 'lucide-react';
+import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
 
 const CARD_PROPS = {
   shadows: '',
@@ -29,8 +30,8 @@ const CARD_PROPS = {
 };
 
 const STATUS_ITEMS = [
-  { key: 'running', label: '进行中' },
   { key: 'success', label: '成功' },
+  { key: 'running', label: '进行中' },
   { key: 'failed', label: '失败' },
 ];
 
@@ -69,7 +70,15 @@ const buildSummaryItems = (summary = {}) => [
   },
 ];
 
-const TaskSummaryPanel = ({ t, loading = false, summary }) => {
+const TaskSummaryPanel = ({
+  t,
+  loading = false,
+  summary,
+  dateRange,
+  onDateRangeChange,
+  onQuery,
+  onReset,
+}) => {
   const items = buildSummaryItems(summary);
 
   return (
@@ -85,6 +94,38 @@ const TaskSummaryPanel = ({ t, loading = false, summary }) => {
         }
         bodyStyle={{ padding: 16 }}
       >
+        {onDateRangeChange && (
+          <div className='mb-4 flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center'>
+            <DatePicker
+              className='w-full sm:max-w-xl'
+              type='dateTimeRange'
+              value={dateRange}
+              placeholder={[t('开始时间'), t('结束时间')]}
+              showClear={false}
+              pure
+              size='small'
+              presets={DATE_RANGE_PRESETS.map((preset) => ({
+                text: t(preset.text),
+                start: preset.start(),
+                end: preset.end(),
+              }))}
+              onChange={onDateRangeChange}
+            />
+            <div className='flex shrink-0 gap-2'>
+              <Button
+                type='tertiary'
+                size='small'
+                loading={loading}
+                onClick={onQuery}
+              >
+                {t('查询')}
+              </Button>
+              <Button type='tertiary' size='small' onClick={onReset}>
+                {t('重置')}
+              </Button>
+            </div>
+          </div>
+        )}
         <div className='grid grid-cols-1 gap-4 lg:grid-cols-3'>
           {items.map((item) => {
             const total = getTotal(item.counts);
