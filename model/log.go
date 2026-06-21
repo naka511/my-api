@@ -327,6 +327,24 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
 	}
+	if params.LogType == LogTypeConsume && common.DataExportEnabled {
+		LogQuotaData(params.UserId, username, params.ModelName, params.Quota, common.GetTimestamp(), 0)
+	}
+}
+
+func HasTaskConsumeLog(taskID string) bool {
+	if taskID == "" {
+		return false
+	}
+	var count int64
+	pattern := fmt.Sprintf("%%\"task_id\":\"%s\"%%", taskID)
+	if err := LOG_DB.Model(&Log{}).
+		Where("type = ? AND other LIKE ?", LogTypeConsume, pattern).
+		Count(&count).Error; err != nil {
+		common.SysLog("failed to check task consume log: " + err.Error())
+		return false
+	}
+	return count > 0
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {

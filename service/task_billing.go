@@ -40,6 +40,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
+	if info.TaskRelayInfo != nil && info.PublicTaskID != "" {
+		other["task_id"] = info.PublicTaskID
+	}
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {
@@ -65,6 +68,32 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
 	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+}
+
+func EnsureTaskConsumeLog(ctx context.Context, task *model.Task) {
+	if task == nil || task.Quota <= 0 || model.HasTaskConsumeLog(task.TaskID) {
+		return
+	}
+	other := taskBillingOther(task)
+	other["is_task"] = true
+	other["task_id"] = task.TaskID
+	other["request_path"] = "/v1/video/generations"
+
+	content := fmt.Sprintf("异步任务完成补记消费，任务ID %s", task.TaskID)
+	if task.Action != "" {
+		content = fmt.Sprintf("操作 %s，异步任务完成补记消费", task.Action)
+	}
+	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+		UserId:    task.UserId,
+		LogType:   model.LogTypeConsume,
+		Content:   content,
+		ChannelId: task.ChannelId,
+		ModelName: taskModelName(task),
+		Quota:     task.Quota,
+		TokenId:   task.PrivateData.TokenId,
+		Group:     task.Group,
+		Other:     other,
+	})
 }
 
 // ---------------------------------------------------------------------------

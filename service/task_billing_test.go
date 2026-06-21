@@ -65,6 +65,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.CacheQuotaDataLock.Lock()
+		model.CacheQuotaData = make(map[string]*model.QuotaData)
+		model.CacheQuotaDataLock.Unlock()
 	})
 }
 
@@ -713,4 +716,80 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestEnsureTaskConsumeLogBackfillsMissingTaskLog(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	savedDataExportEnabled := common.DataExportEnabled
+	common.DataExportEnabled = true
+	t.Cleanup(func() {
+		common.DataExportEnabled = savedDataExportEnabled
+	})
+
+	const userID, tokenID, channelID = 41, 41, 41
+	const quota = 1200
+
+	seedUser(t, userID, 10000)
+	seedToken(t, tokenID, userID, "sk-task-log", 5000)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, quota, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_missing_consume_log"
+	task.Action = "textGenerate"
+	task.PrivateData.BillingContext.OriginModelName = "video-2.0-fast"
+
+	EnsureTaskConsumeLog(ctx, task)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeConsume, log.Type)
+	assert.Equal(t, userID, log.UserId)
+	assert.Equal(t, "test_user", log.Username)
+	assert.Equal(t, "video-2.0-fast", log.ModelName)
+	assert.Equal(t, quota, log.Quota)
+	assert.Contains(t, log.Other, `"task_id":"task_missing_consume_log"`)
+
+	model.CacheQuotaDataLock.Lock()
+	defer model.CacheQuotaDataLock.Unlock()
+	require.Len(t, model.CacheQuotaData, 1)
+	for _, data := range model.CacheQuotaData {
+		assert.Equal(t, userID, data.UserID)
+		assert.Equal(t, "test_user", data.Username)
+		assert.Equal(t, "video-2.0-fast", data.ModelName)
+		assert.Equal(t, quota, data.Quota)
+	}
+}
+
+func TestEnsureTaskConsumeLogDoesNotDuplicateExistingTaskLog(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 42, 42, 42
+
+	seedUser(t, userID, 10000)
+	seedToken(t, tokenID, userID, "sk-task-log-existing", 5000)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, 1200, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_existing_consume_log"
+	task.PrivateData.BillingContext.OriginModelName = "video-2.0-fast"
+
+	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+		UserId:    userID,
+		LogType:   model.LogTypeConsume,
+		Content:   "existing",
+		ChannelId: channelID,
+		ModelName: "video-2.0-fast",
+		Quota:     1200,
+		TokenId:   tokenID,
+		Group:     "default",
+		Other: map[string]interface{}{
+			"task_id": task.TaskID,
+		},
+	})
+
+	EnsureTaskConsumeLog(ctx, task)
+
+	assert.Equal(t, int64(1), countLogs(t))
 }
