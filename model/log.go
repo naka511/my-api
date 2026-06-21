@@ -481,16 +481,29 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota       int         `json:"quota"`
+	Rpm         int         `json:"rpm"`
+	Tpm         int         `json:"tpm"`
+	TaskSummary TaskSummary `json:"task_summary" gorm:"-"`
+}
+
+type TaskStatusSummary struct {
+	Running int64 `json:"running"`
+	Success int64 `json:"success"`
+	Failed  int64 `json:"failed"`
+}
+
+type TaskSummary struct {
+	Total TaskStatusSummary `json:"total"`
+	Image TaskStatusSummary `json:"image"`
+	Video TaskStatusSummary `json:"video"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
+	tx := LOG_DB.Table("logs").Select("ifnull(sum(quota),0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0) tpm")
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
@@ -538,8 +551,173 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	stat.TaskSummary, err = GetTaskSummary(startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		common.SysError("failed to query task summary stat: " + err.Error())
+		stat.TaskSummary = TaskSummary{}
+	}
 
 	return stat, nil
+}
+
+func GetTaskSummary(startTimestamp int64, endTimestamp int64, modelName string, username string, channel int, group string) (summary TaskSummary, err error) {
+	image, err := getImageTaskSummary(startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	video, err := getVideoTaskSummary(startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	summary.Image = image
+	summary.Video = video
+	summary.Total = TaskStatusSummary{
+		Running: image.Running + video.Running,
+		Success: image.Success + video.Success,
+		Failed:  image.Failed + video.Failed,
+	}
+	return summary, nil
+}
+
+func applyTaskSummaryLogFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64, modelName string, username string, channel int, group string) (*gorm.DB, error) {
+	var err error
+	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
+		return nil, err
+	}
+	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
+		return nil, err
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where(commonGroupCol+" = ?", group)
+	}
+	return tx, nil
+}
+
+func getImageTaskSummary(startTimestamp int64, endTimestamp int64, modelName string, username string, channel int, group string) (TaskStatusSummary, error) {
+	var summary TaskStatusSummary
+	base := LOG_DB.Model(&Log{}).Where("other LIKE ?", `%"/v1/images/generations"%`)
+
+	successTx, err := applyTaskSummaryLogFilters(base.Session(&gorm.Session{}), startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	if err := successTx.Where("type = ?", LogTypeConsume).Count(&summary.Success).Error; err != nil {
+		common.SysError("failed to count image task success logs: " + err.Error())
+		return summary, errors.New("查询任务汇总失败")
+	}
+
+	failedTx, err := applyTaskSummaryLogFilters(base.Session(&gorm.Session{}), startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	if err := failedTx.Where("type = ?", LogTypeError).Count(&summary.Failed).Error; err != nil {
+		common.SysError("failed to count image task failed logs: " + err.Error())
+		return summary, errors.New("查询任务汇总失败")
+	}
+	return summary, nil
+}
+
+func applyTaskSummaryVideoFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64, modelName string, username string, channel int, group string) (*gorm.DB, error) {
+	if startTimestamp != 0 {
+		tx = tx.Where("submit_time >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("submit_time <= ?", endTimestamp)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where(logGroupCol+" = ?", group)
+	}
+	if modelName != "" {
+		if strings.Contains(modelName, "%") {
+			pattern, err := sanitizeLikePattern(modelName)
+			if err != nil {
+				return nil, err
+			}
+			tx = tx.Where("properties LIKE ? ESCAPE '!'", pattern)
+		} else {
+			tx = tx.Where("properties LIKE ?", "%"+modelName+"%")
+		}
+	}
+	if username != "" {
+		userIds, err := getUserIdsByUsernameFilter(username)
+		if err != nil {
+			return nil, err
+		}
+		if len(userIds) == 0 {
+			tx = tx.Where("1 = 0")
+		} else {
+			tx = tx.Where("user_id IN ?", userIds)
+		}
+	}
+	return tx, nil
+}
+
+func getUserIdsByUsernameFilter(username string) ([]int, error) {
+	var users []User
+	tx := DB.Model(&User{})
+	if strings.Contains(username, "%") {
+		pattern, err := sanitizeLikePattern(username)
+		if err != nil {
+			return nil, err
+		}
+		tx = tx.Where("username LIKE ? ESCAPE '!'", pattern)
+	} else {
+		tx = tx.Where("username = ?", username)
+	}
+	if err := tx.Select("id").Find(&users).Error; err != nil {
+		common.SysError("failed to query users for task summary: " + err.Error())
+		return nil, errors.New("查询任务汇总失败")
+	}
+	userIds := make([]int, 0, len(users))
+	for _, user := range users {
+		userIds = append(userIds, user.Id)
+	}
+	return userIds, nil
+}
+
+func getVideoTaskSummary(startTimestamp int64, endTimestamp int64, modelName string, username string, channel int, group string) (TaskStatusSummary, error) {
+	var summary TaskStatusSummary
+	base := DB.Model(&Task{}).Where("platform NOT IN ?", []constant.TaskPlatform{constant.TaskPlatformSuno, constant.TaskPlatformMidjourney})
+
+	runningTx, err := applyTaskSummaryVideoFilters(base.Session(&gorm.Session{}), startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	if err := runningTx.Where("status NOT IN ?", []TaskStatus{TaskStatusSuccess, TaskStatusFailure}).Count(&summary.Running).Error; err != nil {
+		common.SysError("failed to count running video tasks: " + err.Error())
+		return summary, errors.New("查询任务汇总失败")
+	}
+
+	successTx, err := applyTaskSummaryVideoFilters(base.Session(&gorm.Session{}), startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	if err := successTx.Where("status = ?", TaskStatusSuccess).Count(&summary.Success).Error; err != nil {
+		common.SysError("failed to count success video tasks: " + err.Error())
+		return summary, errors.New("查询任务汇总失败")
+	}
+
+	failedTx, err := applyTaskSummaryVideoFilters(base.Session(&gorm.Session{}), startTimestamp, endTimestamp, modelName, username, channel, group)
+	if err != nil {
+		return summary, err
+	}
+	if err := failedTx.Where("status = ?", TaskStatusFailure).Count(&summary.Failed).Error; err != nil {
+		common.SysError("failed to count failed video tasks: " + err.Error())
+		return summary, errors.New("查询任务汇总失败")
+	}
+	return summary, nil
 }
 
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {

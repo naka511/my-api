@@ -22,6 +22,7 @@ import CardPro from '../../common/ui/CardPro';
 import LogsTable from './UsageLogsTable';
 import LogsActions from './UsageLogsActions';
 import LogsFilters from './UsageLogsFilters';
+import TaskSummaryPanel from './TaskSummaryPanel';
 import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import UserInfoModal from './modals/UserInfoModal';
 import ChannelAffinityUsageCacheModal from './modals/ChannelAffinityUsageCacheModal';
@@ -43,6 +44,11 @@ const LogsPage = () => {
       <ParamOverrideModal {...logsData} />
 
       {/* Main Content */}
+      <TaskSummaryPanel
+        t={logsData.t}
+        loading={logsData.loadingStat}
+        summary={logsData.stat?.task_summary}
+      />
       <CardPro
         type='type2'
         statsArea={<LogsActions {...logsData} />}

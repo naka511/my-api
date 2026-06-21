@@ -89,6 +89,11 @@ export const useLogsData = () => {
   const [stat, setStat] = useState({
     quota: 0,
     token: 0,
+    task_summary: {
+      total: { running: 0, success: 0, failed: 0 },
+      image: { running: 0, success: 0, failed: 0 },
+      video: { running: 0, success: 0, failed: 0 },
+    },
   });
 
   // Form state
@@ -792,7 +797,7 @@ export const useLogsData = () => {
   // Refresh function
   const refresh = async () => {
     setActivePage(1);
-    handleEyeClick();
+    await handleEyeClick();
     await loadLogs(1, pageSize);
   };
 

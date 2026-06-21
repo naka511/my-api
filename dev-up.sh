@@ -11,6 +11,7 @@ GO_BIN_DIR="${HOME}/.local/sdk/go/bin"
 BUN_BIN_DIR="${HOME}/.bun/bin"
 export PATH="${NODE_BIN_DIR}:${GO_BIN_DIR}:${BUN_BIN_DIR}:${PATH}"
 export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
 
 if [ ! -x "${GO_BIN_DIR}/go" ]; then
   echo "go not found: ${GO_BIN_DIR}/go"
