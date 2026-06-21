@@ -25,6 +25,7 @@ type UserBase struct {
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
+	c.Set("username", user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)

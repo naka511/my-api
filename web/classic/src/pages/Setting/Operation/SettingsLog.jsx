@@ -45,7 +45,7 @@ export default function SettingsLog(props) {
   const [loading, setLoading] = useState(false);
   const [loadingCleanHistoryLog, setLoadingCleanHistoryLog] = useState(false);
   const [inputs, setInputs] = useState({
-    LogConsumeEnabled: false,
+    LogConsumeEnabled: true,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();

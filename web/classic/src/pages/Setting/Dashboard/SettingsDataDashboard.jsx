@@ -38,7 +38,7 @@ export default function DataDashboard(props) {
   ];
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
-    DataExportEnabled: false,
+    DataExportEnabled: true,
     DataExportInterval: '',
     DataExportDefaultTime: '',
   });

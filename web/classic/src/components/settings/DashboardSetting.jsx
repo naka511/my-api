@@ -45,7 +45,7 @@ const DashboardSetting = () => {
     UptimeKumaSlug: '',
 
     /* 数据看板 */
-    DataExportEnabled: false,
+    DataExportEnabled: true,
     DataExportDefaultTime: 'hour',
     DataExportInterval: 5,
   });

@@ -62,7 +62,7 @@ const OperationSetting = () => {
     SensitiveWords: '',
 
     /* 日志设置 */
-    LogConsumeEnabled: false,
+    LogConsumeEnabled: true,
 
     /* 监控设置 */
     ChannelDisableThreshold: 0,
