@@ -676,6 +676,9 @@ type TaskRelayInfo struct {
 	PublicTaskID string
 
 	ConsumeQuota bool
+	// SkipPreConsume is used by background task workers when the request quota
+	// has already been reserved before the task entered the local queue.
+	SkipPreConsume bool
 
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any

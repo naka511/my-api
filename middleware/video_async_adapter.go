@@ -13,6 +13,7 @@ import (
 
 func VideoAsyncRequestConvert() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Set("local_async_video_submit", true)
 		c.Request.URL.Path = strings.Replace(c.Request.URL.Path, "/v1/video/async-generations", "/v1/video/generations", 1)
 
 		if c.Request.Method != http.MethodPost {

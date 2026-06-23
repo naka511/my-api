@@ -100,6 +100,10 @@ type TaskPrivateData struct {
 	Key            string `json:"key,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	// 本地异步提交队列：保存下游原始请求体，后台 worker 提交成功后清空。
+	SubmitRequestBody []byte `json:"submit_request_body,omitempty"`
+	SubmitAttempts    int    `json:"submit_attempts,omitempty"`
+	LastSubmitError   string `json:"last_submit_error,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
@@ -150,10 +154,23 @@ func (p *TaskPrivateData) Scan(val interface{}) error {
 }
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
-	if (p == TaskPrivateData{}) {
+	if p.IsEmpty() {
 		return nil, nil
 	}
 	return common.Marshal(p)
+}
+
+func (p TaskPrivateData) IsEmpty() bool {
+	return p.Key == "" &&
+		p.UpstreamTaskID == "" &&
+		p.ResultURL == "" &&
+		len(p.SubmitRequestBody) == 0 &&
+		p.SubmitAttempts == 0 &&
+		p.LastSubmitError == "" &&
+		p.BillingSource == "" &&
+		p.SubscriptionId == 0 &&
+		p.TokenId == 0 &&
+		p.BillingContext == nil
 }
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -312,6 +329,37 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 		return nil
 	}
 	return tasks
+}
+
+func GetLocalQueuedSubmitTasks(limit int) []*Task {
+	var tasks []*Task
+	err := DB.Where("progress = ?", "0%").
+		Where("status = ?", TaskStatusSubmitted).
+		Limit(limit).
+		Order("id").
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	queued := make([]*Task, 0, len(tasks))
+	for _, task := range tasks {
+		if len(task.PrivateData.SubmitRequestBody) > 0 && task.PrivateData.UpstreamTaskID == "" {
+			queued = append(queued, task)
+		}
+	}
+	return queued
+}
+
+func ClaimLocalQueuedSubmitTask(task *Task) (bool, error) {
+	result := DB.Model(&Task{}).
+		Where("id = ? AND status = ? AND progress = ?", task.ID, TaskStatusSubmitted, "0%").
+		Updates(map[string]any{
+			"progress": "1%",
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {

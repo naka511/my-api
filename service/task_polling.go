@@ -107,6 +107,9 @@ func TaskPollingLoop() {
 			taskM := make(map[string]*model.Task)
 			nullTaskIds := make([]int64, 0)
 			for _, task := range tasks {
+				if len(task.PrivateData.SubmitRequestBody) > 0 && task.PrivateData.UpstreamTaskID == "" {
+					continue
+				}
 				upstreamID := task.GetUpstreamTaskID()
 				if upstreamID == "" {
 					// 统计失败的未完成任务

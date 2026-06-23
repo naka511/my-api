@@ -498,6 +498,10 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
+	if RelayTaskLocalQueue(c, relayInfo) {
+		return
+	}
+
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {

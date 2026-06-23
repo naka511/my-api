@@ -31,6 +31,13 @@ type TaskSubmitResult struct {
 	//PerCallPrice   types.PriceData
 }
 
+type TaskSubmitPreparation struct {
+	Platform  constant.TaskPlatform
+	Adaptor   channel.TaskAdaptor
+	ModelName string
+	Quota     int
+}
+
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
 // 查找原始任务、从中提取模型名称、将渠道锁定到原始任务的渠道
 // （通过 info.LockedChannel，重试时复用同一渠道并轮换 key），
@@ -143,6 +150,67 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 // 构建/发送/解析上游请求 → 提交后计费调整(AdjustBillingOnSubmit)。
 // 控制器负责 defer Refund 和成功后 Settle。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
+	prepared, taskErr := PrepareTaskSubmit(c, info)
+	if taskErr != nil {
+		return nil, taskErr
+	}
+	platform := prepared.Platform
+	adaptor := prepared.Adaptor
+	modelName := prepared.ModelName
+
+	// 8. 构建请求体
+	requestBody, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
+	}
+
+	// 9. 发送请求
+	resp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
+	}
+	if resp != nil && (resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices) {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+	}
+
+	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
+	otherRatios := info.PriceData.OtherRatios
+	if otherRatios == nil {
+		otherRatios = map[string]float64{}
+	}
+	ratiosJSON, _ := common.Marshal(otherRatios)
+	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
+
+	// 11. 解析响应
+	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
+	if taskErr != nil {
+		return nil, taskErr
+	}
+
+	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
+	finalQuota := info.PriceData.Quota
+	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+		info.PriceData.OtherRatios = adjustedRatios
+		if shouldApplyTaskOtherRatios(info, modelName) {
+			// 基于调整后的 ratios 重新计算 quota
+			finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
+			info.PriceData.Quota = finalQuota
+		}
+	}
+
+	return &TaskSubmitResult{
+		UpstreamTaskID: upstreamTaskID,
+		TaskData:       taskData,
+		Platform:       platform,
+		Quota:          finalQuota,
+	}, nil
+}
+
+// PrepareTaskSubmit performs the local-only part of a task submission:
+// channel metadata, adaptor validation, model mapping, price estimation and
+// optional quota pre-consumption. It intentionally does not call the upstream.
+func PrepareTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitPreparation, *dto.TaskError) {
 	info.InitChannelMeta(c)
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
@@ -205,59 +273,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
-	if info.Billing == nil && !info.PriceData.FreeModel {
+	skipPreConsume := info.TaskRelayInfo != nil && info.TaskRelayInfo.SkipPreConsume
+	if !skipPreConsume && info.Billing == nil && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
 		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
 		}
 	}
 
-	// 8. 构建请求体
-	requestBody, err := adaptor.BuildRequestBody(c, info)
-	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
-	}
-
-	// 9. 发送请求
-	resp, err := adaptor.DoRequest(c, info, requestBody)
-	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
-	}
-	if resp != nil && (resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices) {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
-	}
-
-	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
-	otherRatios := info.PriceData.OtherRatios
-	if otherRatios == nil {
-		otherRatios = map[string]float64{}
-	}
-	ratiosJSON, _ := common.Marshal(otherRatios)
-	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
-
-	// 11. 解析响应
-	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
-	if taskErr != nil {
-		return nil, taskErr
-	}
-
-	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
-	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
-		info.PriceData.OtherRatios = adjustedRatios
-		if shouldApplyTaskOtherRatios(info, modelName) {
-			// 基于调整后的 ratios 重新计算 quota
-			finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
-			info.PriceData.Quota = finalQuota
-		}
-	}
-
-	return &TaskSubmitResult{
-		UpstreamTaskID: upstreamTaskID,
-		TaskData:       taskData,
-		Platform:       platform,
-		Quota:          finalQuota,
+	return &TaskSubmitPreparation{
+		Platform:  platform,
+		Adaptor:   adaptor,
+		ModelName: modelName,
+		Quota:     info.PriceData.Quota,
 	}, nil
 }
 
