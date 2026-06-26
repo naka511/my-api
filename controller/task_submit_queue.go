@@ -26,6 +26,13 @@ import (
 
 var localAsyncVideoSubmitWorkerOnce sync.Once
 
+type localAsyncVideoSubmitConfig struct {
+	Concurrency       int
+	BatchSize         int
+	IntervalSeconds   int
+	StuckResetMinutes int
+}
+
 func StartLocalAsyncVideoSubmitWorker() {
 	localAsyncVideoSubmitWorkerOnce.Do(func() {
 		go localAsyncVideoSubmitLoop()
@@ -116,14 +123,78 @@ func RelayTaskLocalQueue(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool 
 }
 
 func localAsyncVideoSubmitLoop() {
+	config := loadLocalAsyncVideoSubmitConfig()
+	logger.LogInfo(context.Background(), fmt.Sprintf(
+		"local async video submit worker started: concurrency=%d batch=%d interval=%ds stuck_reset=%dm",
+		config.Concurrency,
+		config.BatchSize,
+		config.IntervalSeconds,
+		config.StuckResetMinutes,
+	))
+
 	for {
-		submitLocalQueuedVideoTasks(context.Background(), 10)
-		time.Sleep(3 * time.Second)
+		ctx := context.Background()
+		resetStuckLocalQueuedVideoTasks(ctx, config)
+		submitLocalQueuedVideoTasks(ctx, config)
+		time.Sleep(time.Duration(config.IntervalSeconds) * time.Second)
 	}
 }
 
-func submitLocalQueuedVideoTasks(ctx context.Context, limit int) {
-	tasks := model.GetLocalQueuedSubmitTasks(limit)
+func loadLocalAsyncVideoSubmitConfig() localAsyncVideoSubmitConfig {
+	concurrency := common.GetEnvOrDefault("LOCAL_ASYNC_VIDEO_SUBMIT_CONCURRENCY", 20)
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	if concurrency > 200 {
+		concurrency = 200
+	}
+
+	batchSize := common.GetEnvOrDefault("LOCAL_ASYNC_VIDEO_SUBMIT_BATCH_SIZE", concurrency*4)
+	if batchSize < concurrency {
+		batchSize = concurrency
+	}
+	if batchSize > 1000 {
+		batchSize = 1000
+	}
+
+	intervalSeconds := common.GetEnvOrDefault("LOCAL_ASYNC_VIDEO_SUBMIT_INTERVAL_SECONDS", 1)
+	if intervalSeconds < 1 {
+		intervalSeconds = 1
+	}
+
+	stuckResetMinutes := common.GetEnvOrDefault("LOCAL_ASYNC_VIDEO_SUBMIT_STUCK_RESET_MINUTES", 5)
+	if stuckResetMinutes < 1 {
+		stuckResetMinutes = 1
+	}
+
+	return localAsyncVideoSubmitConfig{
+		Concurrency:       concurrency,
+		BatchSize:         batchSize,
+		IntervalSeconds:   intervalSeconds,
+		StuckResetMinutes: stuckResetMinutes,
+	}
+}
+
+func resetStuckLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubmitConfig) {
+	cutoff := time.Now().Unix() - int64(config.StuckResetMinutes)*60
+	rows, err := model.ResetStuckLocalQueuedSubmitTasks(cutoff, config.BatchSize)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("reset stuck local queued video tasks failed: %s", err.Error()))
+		return
+	}
+	if rows > 0 {
+		logger.LogWarn(ctx, fmt.Sprintf("reset %d stuck local queued video submit tasks", rows))
+	}
+}
+
+func submitLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubmitConfig) {
+	tasks := model.GetLocalQueuedSubmitTasks(config.BatchSize)
+	if len(tasks) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, config.Concurrency)
+	var wg sync.WaitGroup
 	for _, task := range tasks {
 		claimed, err := model.ClaimLocalQueuedSubmitTask(task)
 		if err != nil {
@@ -133,10 +204,19 @@ func submitLocalQueuedVideoTasks(ctx context.Context, limit int) {
 		if !claimed {
 			continue
 		}
-		if err := submitLocalQueuedVideoTask(ctx, task); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("submit local queued video task %s failed: %s", task.TaskID, err.Error()))
-		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(task *model.Task) {
+			defer wg.Done()
+			defer func() {
+				<-sem
+			}()
+			if err := submitLocalQueuedVideoTask(ctx, task); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("submit local queued video task %s failed: %s", task.TaskID, err.Error()))
+			}
+		}(task)
 	}
+	wg.Wait()
 }
 
 func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {

@@ -351,15 +351,45 @@ func GetLocalQueuedSubmitTasks(limit int) []*Task {
 }
 
 func ClaimLocalQueuedSubmitTask(task *Task) (bool, error) {
+	now := time.Now().Unix()
 	result := DB.Model(&Task{}).
 		Where("id = ? AND status = ? AND progress = ?", task.ID, TaskStatusSubmitted, "0%").
 		Updates(map[string]any{
-			"progress": "1%",
+			"progress":   "1%",
+			"updated_at": now,
 		})
 	if result.Error != nil {
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
+}
+
+func ResetStuckLocalQueuedSubmitTasks(cutoffUnix int64, limit int) (int64, error) {
+	var taskIDs []int64
+	err := DB.Model(&Task{}).
+		Select("id").
+		Where("progress = ?", "1%").
+		Where("status = ?", TaskStatusSubmitted).
+		Where("updated_at < ?", cutoffUnix).
+		Limit(limit).
+		Order("id").
+		Pluck("id", &taskIDs).Error
+	if err != nil {
+		return 0, err
+	}
+	if len(taskIDs) == 0 {
+		return 0, nil
+	}
+
+	result := DB.Model(&Task{}).
+		Where("id IN ?", taskIDs).
+		Updates(map[string]any{
+			"progress": "0%",
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
