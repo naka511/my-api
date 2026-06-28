@@ -415,11 +415,22 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	requestPath := c.Request.URL.Path
+	isOpenAIVideoAPI := strings.HasPrefix(requestPath, "/v1/videos/")
+	isVideo2AsyncAPI := strings.HasPrefix(requestPath, "/v1/video/async-generations/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
 		respBody = realtimeResp
+		return
+	}
+
+	// Video2 async API 格式: 对下游只暴露文档约定字段，避免泄露内部任务对象。
+	if isVideo2AsyncAPI {
+		respBody, err = common.Marshal(buildVideo2AsyncTaskResponse(originTask))
+		if err != nil {
+			taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -452,6 +463,115 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
+}
+
+type video2AsyncTaskResponse struct {
+	ID          string                `json:"id"`
+	TaskID      string                `json:"task_id"`
+	Object      string                `json:"object"`
+	Model       string                `json:"model"`
+	Status      string                `json:"status"`
+	URL         string                `json:"url,omitempty"`
+	Progress    int                   `json:"progress"`
+	CreatedAt   int64                 `json:"created_at"`
+	CompletedAt int64                 `json:"completed_at,omitempty"`
+	Error       *dto.OpenAIVideoError `json:"error,omitempty"`
+}
+
+func buildVideo2AsyncTaskResponse(task *model.Task) video2AsyncTaskResponse {
+	status := mapVideo2AsyncStatus(task.Status)
+	progress := parseTaskProgress(task.Progress)
+	if status == dto.VideoStatusCompleted || status == dto.VideoStatusFailed {
+		progress = 100
+	}
+
+	createdAt := task.SubmitTime
+	if createdAt == 0 {
+		createdAt = task.CreatedAt
+	}
+
+	resp := video2AsyncTaskResponse{
+		ID:        task.TaskID,
+		TaskID:    task.TaskID,
+		Object:    "video",
+		Model:     resolveTaskModelName(task),
+		Status:    status,
+		Progress:  progress,
+		CreatedAt: createdAt,
+	}
+
+	if status == dto.VideoStatusCompleted {
+		resp.URL = task.GetResultURL()
+		if resp.URL == "" {
+			resp.URL = taskcommon.BuildProxyURL(task.TaskID)
+		}
+	}
+
+	if status == dto.VideoStatusFailed {
+		resp.Error = &dto.OpenAIVideoError{
+			Message: strings.TrimSpace(task.FailReason),
+			Code:    "video_generation_failed",
+		}
+		if resp.Error.Message == "" {
+			resp.Error.Message = "video generation failed"
+		}
+	}
+
+	if status == dto.VideoStatusCompleted || status == dto.VideoStatusFailed {
+		resp.CompletedAt = task.FinishTime
+		if resp.CompletedAt == 0 {
+			resp.CompletedAt = task.UpdatedAt
+		}
+	}
+
+	return resp
+}
+
+func mapVideo2AsyncStatus(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusQueued, model.TaskStatusSubmitted, model.TaskStatusNotStart:
+		return dto.VideoStatusQueued
+	case model.TaskStatusSuccess:
+		return dto.VideoStatusCompleted
+	case model.TaskStatusFailure:
+		return dto.VideoStatusFailed
+	default:
+		return "processing"
+	}
+}
+
+func parseTaskProgress(progress string) int {
+	progress = strings.TrimSpace(strings.TrimSuffix(progress, "%"))
+	if progress == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(progress)
+	if err != nil {
+		return 0
+	}
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func resolveTaskModelName(task *model.Task) string {
+	if task.Properties.OriginModelName != "" {
+		return task.Properties.OriginModelName
+	}
+	if task.Properties.UpstreamModelName != "" {
+		return task.Properties.UpstreamModelName
+	}
+	var data map[string]any
+	if err := common.Unmarshal(task.Data, &data); err == nil {
+		if modelName, ok := data["model"].(string); ok {
+			return modelName
+		}
+	}
+	return ""
 }
 
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
