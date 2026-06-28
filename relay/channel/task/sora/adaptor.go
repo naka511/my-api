@@ -301,27 +301,101 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 	_ = resp.Body.Close()
 
-	// Parse Sora response
-	var dResp responseTask
-	if err := common.Unmarshal(responseBody, &dResp); err != nil {
+	var parsed any
+	if err := common.Unmarshal(responseBody, &parsed); err != nil {
 		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 
-	upstreamID := dResp.upstreamTaskID()
-	if upstreamID == "" {
-		upstreamID = upstreamTaskIDFromResponseBody(responseBody)
-	}
+	upstreamID := upstreamTaskIDFromResponseBody(responseBody)
 	if upstreamID == "" {
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
 
-	// 使用公开 task_xxxx ID 返回给客户端
-	dResp.ID = info.PublicTaskID
-	dResp.TaskID = info.PublicTaskID
-	c.JSON(http.StatusOK, dResp)
+	c.JSON(http.StatusOK, publicSubmitResponseFromBody(responseBody, info))
 	return upstreamID, responseBody, nil
+}
+
+func publicSubmitResponseFromBody(responseBody []byte, info *relaycommon.RelayInfo) responseTask {
+	result := gjson.ParseBytes(responseBody)
+	status := normalizeTaskStatus(taskStatusFromResponseBody(responseBody))
+	if status == "" {
+		status = dto.VideoStatusQueued
+	}
+	if status == dto.VideoStatusInProgress {
+		status = "processing"
+	}
+
+	modelName := firstStringFromJSON(result,
+		"model",
+		"data.model",
+		"result.model",
+		"task.model",
+		"properties.origin_model_name",
+		"data.properties.origin_model_name",
+		"properties.upstream_model_name",
+		"data.properties.upstream_model_name",
+	)
+	if modelName == "" && info != nil {
+		modelName = info.OriginModelName
+	}
+
+	publicTaskID := ""
+	if info != nil {
+		publicTaskID = info.PublicTaskID
+	}
+
+	dResp := responseTask{
+		ID:        publicTaskID,
+		TaskID:    publicTaskID,
+		RequestID: publicTaskID,
+		PollURL:   "/v1/video/async-generations/" + publicTaskID,
+		Object:    "video",
+		Model:     modelName,
+		Status:    status,
+		Progress:  progressFromResponseBody(responseBody),
+		CreatedAt: firstIntFromJSON(result,
+			"created_at",
+			"data.created_at",
+			"result.created_at",
+			"task.created_at",
+			"submit_time",
+			"data.submit_time",
+		),
+		CompletedAt: firstIntFromJSON(result,
+			"completed_at",
+			"data.completed_at",
+			"result.completed_at",
+			"task.completed_at",
+			"finish_time",
+			"data.finish_time",
+		),
+		Seconds: firstStringFromJSON(result, "seconds", "data.seconds", "duration", "data.duration"),
+		Size:    firstStringFromJSON(result, "size", "data.size"),
+	}
+	if dResp.CreatedAt == 0 && info != nil {
+		dResp.CreatedAt = info.StartTime.Unix()
+	}
+	if status == dto.VideoStatusCompleted {
+		dResp.Progress = 100
+		dResp.URL = resultURLFromResponseBody(responseBody)
+	}
+	if status == dto.VideoStatusFailed {
+		dResp.Progress = 100
+		message := errorMessageFromResponseBody(responseBody)
+		if message == "" {
+			message = "video generation failed"
+		}
+		dResp.Error = &struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		}{
+			Message: message,
+			Code:    "video_generation_failed",
+		}
+	}
+	return dResp
 }
 
 func (r responseTask) upstreamTaskID() string {
@@ -589,8 +663,41 @@ func progressFromResponseBody(respBody []byte) int {
 	for _, path := range []string{"progress", "data.progress", "result.progress", "task.progress"} {
 		progress := result.Get(path)
 		if progress.Exists() {
+			if progress.Type == gjson.String {
+				value, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(progress.String()), "%"))
+				if err == nil {
+					return value
+				}
+			}
 			return int(progress.Int())
 		}
+	}
+	return 0
+}
+
+func firstStringFromJSON(result gjson.Result, paths ...string) string {
+	for _, path := range paths {
+		if value := strings.TrimSpace(result.Get(path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstIntFromJSON(result gjson.Result, paths ...string) int64 {
+	for _, path := range paths {
+		value := result.Get(path)
+		if !value.Exists() {
+			continue
+		}
+		if value.Type == gjson.String {
+			parsed, err := strconv.ParseInt(strings.TrimSpace(value.String()), 10, 64)
+			if err == nil {
+				return parsed
+			}
+			continue
+		}
+		return value.Int()
 	}
 	return 0
 }

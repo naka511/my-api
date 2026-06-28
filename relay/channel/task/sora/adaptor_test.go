@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -160,6 +161,66 @@ func TestUpstreamTaskIDFromResponseBodySupportsWrappedShapes(t *testing.T) {
 			require.Equal(t, test.expected, upstreamTaskIDFromResponseBody([]byte(test.body)))
 		})
 	}
+}
+
+func TestPublicSubmitResponseFromBodyHidesInternalTaskDto(t *testing.T) {
+	body := []byte(`{
+		"id":123,
+		"created_at":1782665642,
+		"updated_at":1782665647,
+		"task_id":"task_upstream_public",
+		"platform":"1",
+		"user_id":10,
+		"group":"default",
+		"channel_id":15,
+		"quota":1100000,
+		"action":"textGenerate",
+		"status":"processing",
+		"fail_reason":"",
+		"submit_time":1782665642,
+		"progress":"10%",
+		"properties":{
+			"upstream_model_name":"video-2.0",
+			"origin_model_name":"video-2.0"
+		},
+		"data":{
+			"id":"task_real_upstream",
+			"model":"video-2.0",
+			"object":"video",
+			"status":"queued",
+			"task_id":"task_real_upstream",
+			"progress":10,
+			"created_at":1782665642
+		}
+	}`)
+
+	resp := publicSubmitResponseFromBody(body, &relaycommon.RelayInfo{
+		OriginModelName: "video-2.0",
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			PublicTaskID: "task_public_downstream",
+		},
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "video-2.0",
+		},
+	})
+
+	require.Equal(t, "task_public_downstream", resp.TaskID)
+	require.Equal(t, "video", resp.Object)
+	require.Equal(t, "video-2.0", resp.Model)
+	require.Equal(t, "processing", resp.Status)
+	require.Equal(t, 10, resp.Progress)
+	require.Equal(t, "/v1/video/async-generations/task_public_downstream", resp.PollURL)
+
+	out, err := common.Marshal(resp)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, common.Unmarshal(out, &payload))
+	require.NotContains(t, payload, "user_id")
+	require.NotContains(t, payload, "channel_id")
+	require.NotContains(t, payload, "quota")
+	require.NotContains(t, payload, "properties")
+	require.NotContains(t, payload, "data")
 }
 
 func TestFetchTaskUsesAsyncEndpointForModelAlias(t *testing.T) {
