@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Typography, Spin } from '@douyinfe/semi-ui';
-import { IconExternalOpen, IconCopy } from '@douyinfe/semi-icons';
+import { IconDownload } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
@@ -50,13 +50,43 @@ const ContentModal = ({
     setIsLoading(false);
   };
 
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(modalContent);
+  const buildDownloadUrl = () => {
+    if (!modalContent) return '';
+    try {
+      const url = new URL(modalContent, window.location.origin);
+      url.searchParams.set('download', '1');
+      return url.toString();
+    } catch (error) {
+      return modalContent;
+    }
   };
 
-  const handleOpenInNewTab = () => {
-    window.open(modalContent, '_blank');
+  const handleDownloadVideo = () => {
+    const url = buildDownloadUrl();
+    if (!url) return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
+
+  const renderVideoActions = () => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: 8,
+        marginBottom: 12,
+      }}
+    >
+      <Button icon={<IconDownload />} onClick={handleDownloadVideo}>
+        {t('下载视频')}
+      </Button>
+    </div>
+  );
 
   const renderVideoContent = () => {
     if (videoError) {
@@ -89,14 +119,11 @@ const ContentModal = ({
 
           <div style={{ marginTop: '20px' }}>
             <Button
-              icon={<IconExternalOpen />}
-              onClick={handleOpenInNewTab}
+              icon={<IconDownload />}
+              onClick={handleDownloadVideo}
               style={{ marginRight: '8px' }}
             >
-              {t('在新标签页中打开')}
-            </Button>
-            <Button icon={<IconCopy />} onClick={handleCopyUrl}>
-              {t('复制链接')}
+              {t('下载视频')}
             </Button>
           </div>
 
@@ -120,34 +147,37 @@ const ContentModal = ({
     }
 
     return (
-      <div style={{ position: 'relative', height: '100%' }}>
-        {isLoading && (
-          <div
+      <div style={{ height: '100%' }}>
+        {renderVideoActions()}
+        <div style={{ position: 'relative', height: 'calc(100% - 44px)' }}>
+          {isLoading && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10,
+              }}
+            >
+              <Spin size='large' />
+            </div>
+          )}
+          <video
+            src={modalContent}
+            controls
             style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 10,
+              width: '100%',
+              height: '100%',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
             }}
-          >
-            <Spin size='large' />
-          </div>
-        )}
-        <video
-          src={modalContent}
-          controls
-          style={{
-            width: '100%',
-            height: '100%',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
-          }}
-          onError={handleVideoError}
-          onLoadedData={handleVideoLoaded}
-          onLoadStart={() => setIsLoading(true)}
-        />
+            onError={handleVideoError}
+            onLoadedData={handleVideoLoaded}
+            onLoadStart={() => setIsLoading(true)}
+          />
+        </div>
       </div>
     );
   };

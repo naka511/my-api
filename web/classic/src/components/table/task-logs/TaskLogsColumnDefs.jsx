@@ -407,7 +407,7 @@ export const getTaskLogsColumns = ({
           );
         }
 
-        // 视频预览：优先使用 result_url，兼容旧数据 fail_reason 中的 URL
+        // 视频预览：优先走同站代理，避免 http/IP/跨域链接影响播放与下载。
         const isVideoTask =
           record.action === TASK_ACTION_GENERATE ||
           record.action === TASK_ACTION_TEXT_GENERATE ||
@@ -415,8 +415,11 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_REFERENCE_GENERATE ||
           record.action === TASK_ACTION_REMIX_GENERATE;
         const isSuccess = record.status === 'SUCCESS';
-        const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const taskId = record.task_id || record.TaskID || record.id;
+        const resultUrl = taskId
+          ? `/v1/videos/${encodeURIComponent(taskId)}/content`
+          : record.result_url;
+        const hasResultUrl = typeof resultUrl === 'string' && resultUrl.length > 0;
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a

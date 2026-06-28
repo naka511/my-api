@@ -44,6 +44,14 @@ func VideoProxy(c *gin.Context) {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
 		return
 	}
+	if (!exists || task == nil) && c.GetInt("role") >= common.RoleAdminUser {
+		task, exists, err = model.GetByOnlyTaskId(taskID)
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query admin task %s: %s", taskID, err.Error()))
+			videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
+			return
+		}
+	}
 	if !exists || task == nil {
 		videoProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
 		return
@@ -67,6 +75,7 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	var videoURL string
+	videoURLFromStoredResult := false
 	proxy := channel.GetSetting().Proxy
 	client, err := service.GetHttpClientWithProxy(proxy)
 	if err != nil {
@@ -82,6 +91,9 @@ func VideoProxy(c *gin.Context) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to create request: %s", err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
+	}
+	if rangeHeader := c.GetHeader("Range"); rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
 	}
 
 	switch channel.Type {
@@ -111,13 +123,21 @@ func VideoProxy(c *gin.Context) {
 		if videoURL == "" {
 			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
 			req.Header.Set("Authorization", "Bearer "+channel.Key)
+		} else {
+			videoURLFromStoredResult = true
 		}
 	case constant.ChannelTypeOpenAI:
-		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
-		req.Header.Set("Authorization", "Bearer "+channel.Key)
+		videoURL = resolveStoredVideoURL(task)
+		if videoURL == "" {
+			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+			req.Header.Set("Authorization", "Bearer "+channel.Key)
+		} else {
+			videoURLFromStoredResult = true
+		}
 	default:
 		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
 		videoURL = task.GetResultURL()
+		videoURLFromStoredResult = videoURL != ""
 	}
 
 	videoURL = strings.TrimSpace(videoURL)
@@ -136,7 +156,14 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	fetchSetting := system_setting.GetFetchSetting()
-	if err := common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+	applyIPFilterForDomain := fetchSetting.ApplyIPFilterForDomain
+	if videoURLFromStoredResult {
+		// Stored media result URLs are provider-generated file links. Local proxy
+		// DNS modes may resolve public domains to fake private IPs, so keep the
+		// URL/port/direct-IP checks but skip domain DNS IP filtering here.
+		applyIPFilterForDomain = false
+	}
+	if err := common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, applyIPFilterForDomain); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, err))
 		videoProxyError(c, http.StatusForbidden, "server_error", fmt.Sprintf("request blocked: %v", err))
 		return
@@ -148,6 +175,9 @@ func VideoProxy(c *gin.Context) {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
 	}
+	if videoURLFromStoredResult {
+		client = storedVideoHTTPClient(client)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -157,7 +187,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		videoProxyError(c, http.StatusBadGateway, "server_error",
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
@@ -170,6 +200,10 @@ func VideoProxy(c *gin.Context) {
 		}
 	}
 
+	if c.Query("download") == "1" {
+		c.Writer.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.mp4"`, task.TaskID))
+		c.Writer.Header().Set("Content-Type", "video/mp4")
+	}
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
@@ -190,6 +224,33 @@ func resolveSoraVideoURL(task *model.Task) string {
 		return strings.TrimSpace(data.URL)
 	}
 	return ""
+}
+
+func resolveStoredVideoURL(task *model.Task) string {
+	resultURL := strings.TrimSpace(task.GetResultURL())
+	if resultURL != "" && !strings.Contains(resultURL, "/v1/videos/") {
+		return resultURL
+	}
+	return ""
+}
+
+func storedVideoHTTPClient(base *http.Client) *http.Client {
+	if base == nil {
+		base = http.DefaultClient
+	}
+	client := *base
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		fetchSetting := system_setting.GetFetchSetting()
+		urlStr := req.URL.String()
+		if err := common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, false); err != nil {
+			return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &client
 }
 
 func writeVideoDataURL(c *gin.Context, dataURL string) error {
@@ -219,6 +280,9 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	}
 
 	c.Writer.Header().Set("Content-Type", mimeType)
+	if c.Query("download") == "1" {
+		c.Writer.Header().Set("Content-Disposition", "attachment; filename=\"video.mp4\"")
+	}
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
 	c.Writer.WriteHeader(http.StatusOK)
 	_, err = c.Writer.Write(videoBytes)
