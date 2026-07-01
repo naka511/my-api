@@ -132,10 +132,11 @@ func localAsyncVideoSubmitLoop() {
 		config.StuckResetMinutes,
 	))
 
+	sem := make(chan struct{}, config.Concurrency)
 	for {
 		ctx := context.Background()
 		resetStuckLocalQueuedVideoTasks(ctx, config)
-		submitLocalQueuedVideoTasks(ctx, config)
+		submitLocalQueuedVideoTasks(ctx, config, sem)
 		time.Sleep(time.Duration(config.IntervalSeconds) * time.Second)
 	}
 }
@@ -187,27 +188,38 @@ func resetStuckLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideo
 	}
 }
 
-func submitLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubmitConfig) {
-	tasks := model.GetLocalQueuedSubmitTasks(config.BatchSize)
+func submitLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubmitConfig, sem chan struct{}) {
+	available := config.Concurrency - len(sem)
+	if available <= 0 {
+		return
+	}
+	limit := config.BatchSize
+	if limit > available {
+		limit = available
+	}
+
+	tasks := model.GetLocalQueuedSubmitTasks(limit)
 	if len(tasks) == 0 {
 		return
 	}
 
-	sem := make(chan struct{}, config.Concurrency)
-	var wg sync.WaitGroup
 	for _, task := range tasks {
+		select {
+		case sem <- struct{}{}:
+		default:
+			return
+		}
 		claimed, err := model.ClaimLocalQueuedSubmitTask(task)
 		if err != nil {
+			<-sem
 			logger.LogError(ctx, fmt.Sprintf("claim local queued video task %s failed: %s", task.TaskID, err.Error()))
 			continue
 		}
 		if !claimed {
+			<-sem
 			continue
 		}
-		wg.Add(1)
-		sem <- struct{}{}
 		go func(task *model.Task) {
-			defer wg.Done()
 			defer func() {
 				<-sem
 			}()
@@ -216,7 +228,6 @@ func submitLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubm
 			}
 		}(task)
 	}
-	wg.Wait()
 }
 
 func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
