@@ -447,8 +447,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 					return nil
 				}
 
-				// 其他错误认为是任务失败，记录错误信息并更新任务状态
-				taskResult = relaycommon.FailTaskInfo("upstream returned error")
+				// 查询任务状态时的上游 error 可能只是临时查询失败；任务本身仍可能在上游继续生成。
+				// 只有 ParseTaskResult 明确解析到 failed 状态时才将任务标记为失败。
+				logger.LogWarn(ctx, fmt.Sprintf("Task %s poll returned upstream error, keep current status and retry next round: %s", taskId, openaiError.Message))
+				return nil
 			} else {
 				// unknown error format, log original response
 				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
