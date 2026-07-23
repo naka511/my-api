@@ -208,8 +208,8 @@ const renderStatus = (type, t) => {
       );
     case 'QUEUED':
       return (
-        <Tag color='orange' shape='circle' prefixIcon={<List size={14} />}>
-          {t('排队中')}
+        <Tag color='yellow' shape='circle' prefixIcon={<List size={14} />}>
+          {t('队列中')}
         </Tag>
       );
     case 'UNKNOWN':
