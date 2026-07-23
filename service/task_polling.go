@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -324,25 +325,57 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		}
 		return fmt.Errorf("CacheGetChannel failed: %w", err)
 	}
-	adaptor := GetTaskAdaptorFunc(platform)
-	if adaptor == nil {
+	if GetTaskAdaptorFunc(platform) == nil {
 		return fmt.Errorf("video adaptor not found")
 	}
-	info := &relaycommon.RelayInfo{}
-	info.ChannelMeta = &relaycommon.ChannelMeta{
-		ChannelType:    cacheGetChannel.Type,
-		ChannelBaseUrl: cacheGetChannel.GetBaseURL(),
+
+	concurrency := loadVideoTaskPollConcurrency()
+	if concurrency > len(taskIds) {
+		concurrency = len(taskIds)
 	}
-	info.ApiKey = cacheGetChannel.Key
-	adaptor.Init(info)
+	logger.LogInfo(ctx, fmt.Sprintf("Channel #%d video task polling concurrency: %d", channelId, concurrency))
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
 	for _, taskId := range taskIds {
-		if err := updateVideoSingleTask(ctx, adaptor, cacheGetChannel, taskId, taskM); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("Failed to update video task %s: %s", taskId, err.Error()))
-		}
-		// sleep 1 second between each task to avoid hitting rate limits of upstream platforms
-		time.Sleep(1 * time.Second)
+		taskId := taskId
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				<-sem
+			}()
+			taskAdaptor := GetTaskAdaptorFunc(platform)
+			if taskAdaptor == nil {
+				logger.LogError(ctx, "video adaptor not found")
+				return
+			}
+			info := &relaycommon.RelayInfo{}
+			info.ChannelMeta = &relaycommon.ChannelMeta{
+				ChannelType:    cacheGetChannel.Type,
+				ChannelBaseUrl: cacheGetChannel.GetBaseURL(),
+			}
+			info.ApiKey = cacheGetChannel.Key
+			taskAdaptor.Init(info)
+			if err := updateVideoSingleTask(ctx, taskAdaptor, cacheGetChannel, taskId, taskM); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("Failed to update video task %s: %s", taskId, err.Error()))
+			}
+		}()
 	}
+	wg.Wait()
 	return nil
+}
+
+func loadVideoTaskPollConcurrency() int {
+	concurrency := common.GetEnvOrDefault("VIDEO_TASK_POLL_CONCURRENCY", 20)
+	if concurrency < 1 {
+		return 1
+	}
+	if concurrency > 200 {
+		return 200
+	}
+	return concurrency
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
