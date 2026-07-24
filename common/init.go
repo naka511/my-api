@@ -153,10 +153,12 @@ func initConstantEnv() {
 	// 异步任务超时时间（分钟），超过此时间未完成的任务将被标记为失败并退款。0 表示禁用。
 	constant.TaskTimeoutMinutes = GetEnvOrDefault("TASK_TIMEOUT_MINUTES", 1440)
 	SysLog(fmt.Sprintf(
-		"task env loaded: TASK_TIMEOUT_MINUTES=%d, TASK_QUERY_LIMIT=%d, VIDEO_TASK_POLL_CONCURRENCY=%d",
+		"task env loaded: TASK_TIMEOUT_MINUTES=%d, TASK_QUERY_LIMIT=%d, VIDEO_TASK_POLL_CONCURRENCY=%d, VIDEO_TASK_FAILURE_CONFIRMATIONS=%d, VIDEO_TASK_FAILURE_GRACE_MINUTES=%d",
 		constant.TaskTimeoutMinutes,
 		constant.TaskQueryLimit,
 		GetEnvOrDefault("VIDEO_TASK_POLL_CONCURRENCY", 20),
+		GetEnvOrDefault("VIDEO_TASK_FAILURE_CONFIRMATIONS", 3),
+		GetEnvOrDefault("VIDEO_TASK_FAILURE_GRACE_MINUTES", 60),
 	))
 
 	soraPatchStr := GetEnvOrDefaultString("TASK_PRICE_PATCH", "")

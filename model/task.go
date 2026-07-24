@@ -104,6 +104,10 @@ type TaskPrivateData struct {
 	SubmitRequestBody []byte `json:"submit_request_body,omitempty"`
 	SubmitAttempts    int    `json:"submit_attempts,omitempty"`
 	LastSubmitError   string `json:"last_submit_error,omitempty"`
+	// 上游视频任务可能会先返回阶段性失败，然后在上游内部自动重试并最终成功。
+	PendingFailureCount       int    `json:"pending_failure_count,omitempty"`
+	PendingFailureFirstSeenAt int64  `json:"pending_failure_first_seen_at,omitempty"`
+	PendingFailureReason      string `json:"pending_failure_reason,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
@@ -442,13 +446,16 @@ func (Task *Task) Insert() error {
 }
 
 type taskSnapshot struct {
-	Status     TaskStatus
-	Progress   string
-	StartTime  int64
-	FinishTime int64
-	FailReason string
-	ResultURL  string
-	Data       json.RawMessage
+	Status                    TaskStatus
+	Progress                  string
+	StartTime                 int64
+	FinishTime                int64
+	FailReason                string
+	ResultURL                 string
+	PendingFailureCount       int
+	PendingFailureFirstSeenAt int64
+	PendingFailureReason      string
+	Data                      json.RawMessage
 }
 
 func (s taskSnapshot) Equal(other taskSnapshot) bool {
@@ -458,18 +465,24 @@ func (s taskSnapshot) Equal(other taskSnapshot) bool {
 		s.FinishTime == other.FinishTime &&
 		s.FailReason == other.FailReason &&
 		s.ResultURL == other.ResultURL &&
+		s.PendingFailureCount == other.PendingFailureCount &&
+		s.PendingFailureFirstSeenAt == other.PendingFailureFirstSeenAt &&
+		s.PendingFailureReason == other.PendingFailureReason &&
 		bytes.Equal(s.Data, other.Data)
 }
 
 func (t *Task) Snapshot() taskSnapshot {
 	return taskSnapshot{
-		Status:     t.Status,
-		Progress:   t.Progress,
-		StartTime:  t.StartTime,
-		FinishTime: t.FinishTime,
-		FailReason: t.FailReason,
-		ResultURL:  t.PrivateData.ResultURL,
-		Data:       t.Data,
+		Status:                    t.Status,
+		Progress:                  t.Progress,
+		StartTime:                 t.StartTime,
+		FinishTime:                t.FinishTime,
+		FailReason:                t.FailReason,
+		ResultURL:                 t.PrivateData.ResultURL,
+		PendingFailureCount:       t.PrivateData.PendingFailureCount,
+		PendingFailureFirstSeenAt: t.PrivateData.PendingFailureFirstSeenAt,
+		PendingFailureReason:      t.PrivateData.PendingFailureReason,
+		Data:                      t.Data,
 	}
 }
 

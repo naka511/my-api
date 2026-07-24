@@ -378,6 +378,94 @@ func loadVideoTaskPollConcurrency() int {
 	return concurrency
 }
 
+func loadVideoTaskFailureConfirmations() int {
+	confirmations := common.GetEnvOrDefault("VIDEO_TASK_FAILURE_CONFIRMATIONS", 3)
+	if confirmations < 1 {
+		return 1
+	}
+	if confirmations > 20 {
+		return 20
+	}
+	return confirmations
+}
+
+func loadVideoTaskFailureGraceMinutes() int {
+	minutes := common.GetEnvOrDefault("VIDEO_TASK_FAILURE_GRACE_MINUTES", 60)
+	if minutes < 0 {
+		return 0
+	}
+	if minutes > 24*60 {
+		return 24 * 60
+	}
+	return minutes
+}
+
+func shouldDelayVideoTaskFailure(task *model.Task, reason string, now int64) bool {
+	if isFinalVideoTaskFailureReason(reason) {
+		return false
+	}
+	confirmations := loadVideoTaskFailureConfirmations()
+	if task.PrivateData.PendingFailureCount+1 >= confirmations {
+		return false
+	}
+	graceMinutes := loadVideoTaskFailureGraceMinutes()
+	if graceMinutes > 0 && task.SubmitTime > 0 && now-task.SubmitTime >= int64(graceMinutes)*60 {
+		return false
+	}
+	return true
+}
+
+func recordPendingVideoTaskFailure(task *model.Task, reason string, now int64) {
+	task.PrivateData.PendingFailureCount++
+	if task.PrivateData.PendingFailureFirstSeenAt == 0 {
+		task.PrivateData.PendingFailureFirstSeenAt = now
+	}
+	task.PrivateData.PendingFailureReason = reason
+}
+
+func clearPendingVideoTaskFailure(task *model.Task) {
+	task.PrivateData.PendingFailureCount = 0
+	task.PrivateData.PendingFailureFirstSeenAt = 0
+	task.PrivateData.PendingFailureReason = ""
+}
+
+func isFinalVideoTaskFailureReason(reason string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(reason))
+	if normalized == "" {
+		return false
+	}
+	finalSignals := []string{
+		"model_not_found",
+		"no available channel",
+		"no access to model",
+		"this token has no access",
+		"unauthorized",
+		"forbidden",
+		"permission",
+		"invalid_request",
+		"invalid json",
+		"invalid_json",
+		"json: cannot unmarshal",
+		"bad request",
+		"content_policy",
+		"provider_moderation_error",
+		"moderation",
+		"safety",
+		"blocked",
+		"认证失败",
+		"无权限",
+		"无可用渠道",
+		"模型不存在",
+		"内容审核",
+	}
+	for _, signal := range finalSignals {
+		if strings.Contains(normalized, signal) {
+			return true
+		}
+	}
+	return false
+}
+
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
 	baseURL := constant.ChannelBaseURLs[ch.Type]
 	if ch.GetBaseURL() != "" {
@@ -462,6 +550,24 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	shouldRefund := false
 	shouldSettle := false
 	quota := task.Quota
+
+	if taskResult.Status == model.TaskStatusFailure && shouldDelayVideoTaskFailure(task, taskResult.Reason, now) {
+		recordPendingVideoTaskFailure(task, taskResult.Reason, now)
+		logger.LogWarn(ctx, fmt.Sprintf(
+			"Task %s got retryable upstream failure %d/%d, keep current status and retry next round: %s",
+			task.TaskID,
+			task.PrivateData.PendingFailureCount,
+			loadVideoTaskFailureConfirmations(),
+			taskResult.Reason,
+		))
+		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("Failed to update pending failure for task %s: %s", task.TaskID, err.Error()))
+		}
+		return nil
+	}
+	if taskResult.Status != model.TaskStatusFailure {
+		clearPendingVideoTaskFailure(task)
+	}
 
 	task.Status = model.TaskStatus(taskResult.Status)
 	switch taskResult.Status {
