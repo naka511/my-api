@@ -266,6 +266,7 @@ func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
 		service.RecalculateTaskQuota(ctx, task, result.Quota, "提交号池后调整计费")
 	}
 
+	task.PrivateData.SubmitContentSummary = buildTaskContentSummary(task, task.PrivateData.SubmitRequestBody)
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.SubmitRequestBody = nil
 	task.PrivateData.LastSubmitError = ""

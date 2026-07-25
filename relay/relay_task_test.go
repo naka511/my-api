@@ -87,3 +87,28 @@ func TestBuildVideo2AsyncTaskResponseHidesInternalFields(t *testing.T) {
 	require.NotContains(t, payload, "properties")
 	require.NotContains(t, payload, "data")
 }
+
+func TestBuildVideo2AsyncTaskResponseSanitizesUpstreamFailure(t *testing.T) {
+	rawReason := `{"error":{"code":"model_not_found","message":"No available channel for model video-2.0 under group zdy (distributor) (request id: 20260721062025107811805SZJd1COG)","type":"new_api_error"}}`
+	task := &model.Task{
+		TaskID:     "task_public",
+		Status:     model.TaskStatusFailure,
+		Progress:   "100%",
+		FailReason: rawReason,
+		Properties: model.Properties{
+			OriginModelName: "video-2.0",
+		},
+	}
+
+	resp := buildVideo2AsyncTaskResponse(task)
+	require.NotNil(t, resp.Error)
+	require.Equal(t, "model_unavailable", resp.Error.Code)
+	require.NotContains(t, resp.Error.Message, "zdy")
+	require.NotContains(t, resp.Error.Message, "distributor")
+	require.NotContains(t, resp.Error.Message, "request id")
+
+	body, err := common.Marshal(resp)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "model_not_found")
+	require.NotContains(t, string(body), "No available channel")
+}

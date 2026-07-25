@@ -101,9 +101,10 @@ type TaskPrivateData struct {
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// 本地异步提交队列：保存下游原始请求体，后台 worker 提交成功后清空。
-	SubmitRequestBody []byte `json:"submit_request_body,omitempty"`
-	SubmitAttempts    int    `json:"submit_attempts,omitempty"`
-	LastSubmitError   string `json:"last_submit_error,omitempty"`
+	SubmitRequestBody    []byte         `json:"submit_request_body,omitempty"`
+	SubmitAttempts       int            `json:"submit_attempts,omitempty"`
+	LastSubmitError      string         `json:"last_submit_error,omitempty"`
+	SubmitContentSummary map[string]any `json:"submit_content_summary,omitempty"`
 	// 上游视频任务可能会先返回阶段性失败，然后在上游内部自动重试并最终成功。
 	PendingFailureCount       int    `json:"pending_failure_count,omitempty"`
 	PendingFailureFirstSeenAt int64  `json:"pending_failure_first_seen_at,omitempty"`
@@ -171,6 +172,10 @@ func (p TaskPrivateData) IsEmpty() bool {
 		len(p.SubmitRequestBody) == 0 &&
 		p.SubmitAttempts == 0 &&
 		p.LastSubmitError == "" &&
+		len(p.SubmitContentSummary) == 0 &&
+		p.PendingFailureCount == 0 &&
+		p.PendingFailureFirstSeenAt == 0 &&
+		p.PendingFailureReason == "" &&
 		p.BillingSource == "" &&
 		p.SubscriptionId == 0 &&
 		p.TokenId == 0 &&

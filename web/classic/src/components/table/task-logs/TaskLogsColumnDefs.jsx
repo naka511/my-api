@@ -154,6 +154,17 @@ const getTaskModelName = (record) => {
   ).toLowerCase();
 };
 
+const getTaskModelDisplayName = (record) => {
+  const properties = record?.properties || {};
+  return (
+    properties.origin_model_name ||
+    record?.model ||
+    record?.model_name ||
+    properties.upstream_model_name ||
+    '-'
+  );
+};
+
 const isVideoPreviewTask = (record, resultUrl) => {
   const action = String(record?.action || '').toLowerCase();
   const modelName = getTaskModelName(record);
@@ -275,6 +286,8 @@ export const getTaskLogsColumns = ({
   copyText,
   openContentModal,
   isAdminUser,
+  isRootUser,
+  openTaskContentModal,
   openVideoModal,
   openAudioModal,
 }) => {
@@ -359,6 +372,19 @@ export const getTaskLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.MODEL,
+      title: t('模型'),
+      dataIndex: 'properties',
+      render: (text, record, index) => {
+        const modelName = getTaskModelDisplayName(record);
+        return (
+          <Typography.Text ellipsis={{ showTooltip: true }}>
+            <div>{modelName}</div>
+          </Typography.Text>
+        );
+      },
+    },
+    {
       key: COLUMN_KEYS.TYPE,
       title: t('类型'),
       dataIndex: 'action',
@@ -380,6 +406,27 @@ export const getTaskLogsColumns = ({
           >
             <div>{text}</div>
           </Typography.Text>
+        );
+      },
+    },
+    {
+      key: COLUMN_KEYS.TASK_CONTENT,
+      title: t('任务内容'),
+      dataIndex: 'task_id',
+      render: (text, record, index) => {
+        if (!isRootUser) {
+          return <></>;
+        }
+        return (
+          <a
+            href='#'
+            onClick={(e) => {
+              e.preventDefault();
+              openTaskContentModal(text);
+            }}
+          >
+            {t('查看')}
+          </a>
         );
       },
     },

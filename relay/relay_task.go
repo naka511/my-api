@@ -447,7 +447,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
 			}
-			respBody = openAIVideoData
+			respBody = service.SanitizeOpenAIVideoResponseBody(openAIVideoData)
 			return
 		}
 		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
@@ -508,13 +508,7 @@ func buildVideo2AsyncTaskResponse(task *model.Task) video2AsyncTaskResponse {
 	}
 
 	if status == dto.VideoStatusFailed {
-		resp.Error = &dto.OpenAIVideoError{
-			Message: strings.TrimSpace(task.FailReason),
-			Code:    "video_generation_failed",
-		}
-		if resp.Error.Message == "" {
-			resp.Error.Message = "video generation failed"
-		}
+		resp.Error = service.SanitizeVideoTaskFailure(strings.TrimSpace(task.FailReason))
 	}
 
 	if status == dto.VideoStatusCompleted || status == dto.VideoStatusFailed {

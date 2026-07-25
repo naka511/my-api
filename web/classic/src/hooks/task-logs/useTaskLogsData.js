@@ -44,7 +44,9 @@ export const useTaskLogsData = () => {
     USERNAME: 'username',
     PLATFORM: 'platform',
     TYPE: 'type',
+    MODEL: 'model',
     TASK_ID: 'task_id',
+    TASK_CONTENT: 'task_content',
     TASK_STATUS: 'task_status',
     PROGRESS: 'progress',
     FAIL_REASON: 'fail_reason',
@@ -118,6 +120,9 @@ export const useTaskLogsData = () => {
           merged[COLUMN_KEYS.CHANNEL] = false;
           merged[COLUMN_KEYS.USERNAME] = false;
         }
+        if (!isRootUser) {
+          merged[COLUMN_KEYS.TASK_CONTENT] = false;
+        }
         setVisibleColumns(merged);
       } catch (e) {
         console.error('Failed to parse saved column preferences', e);
@@ -138,7 +143,9 @@ export const useTaskLogsData = () => {
       [COLUMN_KEYS.USERNAME]: isAdminUser,
       [COLUMN_KEYS.PLATFORM]: true,
       [COLUMN_KEYS.TYPE]: true,
+      [COLUMN_KEYS.MODEL]: true,
       [COLUMN_KEYS.TASK_ID]: true,
+      [COLUMN_KEYS.TASK_CONTENT]: isRootUser,
       [COLUMN_KEYS.TASK_STATUS]: true,
       [COLUMN_KEYS.PROGRESS]: true,
       [COLUMN_KEYS.FAIL_REASON]: true,
@@ -166,8 +173,9 @@ export const useTaskLogsData = () => {
 
     allKeys.forEach((key) => {
       if (
-        (key === COLUMN_KEYS.CHANNEL || key === COLUMN_KEYS.USERNAME) &&
-        !isAdminUser
+        ((key === COLUMN_KEYS.CHANNEL || key === COLUMN_KEYS.USERNAME) &&
+          !isAdminUser) ||
+        (key === COLUMN_KEYS.TASK_CONTENT && !isRootUser)
       ) {
         updatedColumns[key] = false;
       } else {
@@ -279,6 +287,22 @@ export const useTaskLogsData = () => {
     setIsModalOpen(true);
   };
 
+  const openTaskContentModal = async (taskId) => {
+    if (!isRootUser || !taskId) {
+      return;
+    }
+    setModalContent(t('加载中...'));
+    setIsModalOpen(true);
+    const res = await API.get(`/api/task/${encodeURIComponent(taskId)}/content`);
+    const { success, message, data } = res.data;
+    if (success) {
+      setModalContent(JSON.stringify(data, null, 2));
+    } else {
+      setModalContent('');
+      showError(message);
+    }
+  };
+
   // 新增：打开视频预览弹窗
   const openVideoModal = (url) => {
     setVideoUrl(url);
@@ -370,6 +394,7 @@ export const useTaskLogsData = () => {
     refresh,
     copyText,
     openContentModal,
+    openTaskContentModal,
     openVideoModal,
     openAudioModal,
     enrichLogs,
