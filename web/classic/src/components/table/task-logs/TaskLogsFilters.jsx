@@ -31,6 +31,7 @@ const TaskLogsFilters = ({
   formApi,
   loading,
   isAdminUser,
+  isRootUser,
   t,
 }) => {
   return (
@@ -84,6 +85,24 @@ const TaskLogsFilters = ({
               pure
               size='small'
             />
+          )}
+
+          {/* 任务状态 - 仅超级管理员可见 */}
+          {isRootUser && (
+            <Form.Select
+              field='task_status'
+              placeholder={t('任务状态')}
+              showClear
+              pure
+              size='small'
+            >
+              <Form.Select.Option value='SUCCESS'>{t('成功')}</Form.Select.Option>
+              <Form.Select.Option value='IN_PROGRESS'>{t('执行中')}</Form.Select.Option>
+              <Form.Select.Option value='QUEUED'>{t('队列中')}</Form.Select.Option>
+              <Form.Select.Option value='SUBMITTED'>{t('已提交')}</Form.Select.Option>
+              <Form.Select.Option value='NOT_START'>{t('未启动')}</Form.Select.Option>
+              <Form.Select.Option value='FAILURE'>{t('失败')}</Form.Select.Option>
+            </Form.Select>
           )}
         </div>
 

@@ -143,6 +143,42 @@ const renderType = (type, t) => {
   }
 };
 
+const getTaskModelName = (record) => {
+  const properties = record?.properties || {};
+  return String(
+    properties.origin_model_name ||
+      properties.upstream_model_name ||
+      record?.model ||
+      record?.model_name ||
+      '',
+  ).toLowerCase();
+};
+
+const isVideoPreviewTask = (record, resultUrl) => {
+  const action = String(record?.action || '').toLowerCase();
+  const modelName = getTaskModelName(record);
+  const url = String(resultUrl || record?.result_url || '').toLowerCase();
+  const knownVideoActions = [
+    TASK_ACTION_GENERATE,
+    TASK_ACTION_TEXT_GENERATE,
+    TASK_ACTION_FIRST_TAIL_GENERATE,
+    TASK_ACTION_REFERENCE_GENERATE,
+    TASK_ACTION_REMIX_GENERATE,
+  ].map((item) => item.toLowerCase());
+
+  return (
+    knownVideoActions.includes(action) ||
+    action.includes('video') ||
+    action.includes('generate') ||
+    modelName.includes('video') ||
+    modelName.includes('sora') ||
+    modelName.includes('veo') ||
+    modelName.includes('ko3') ||
+    url.includes('/v1/videos/') ||
+    /\.(mp4|webm|mov|m4v)(\?|#|$)/.test(url)
+  );
+};
+
 const renderPlatform = (platform, t) => {
   let option = CHANNEL_OPTIONS.find(
     (opt) => String(opt.value) === String(platform),
@@ -408,17 +444,13 @@ export const getTaskLogsColumns = ({
         }
 
         // 视频预览：优先走同站代理，避免 http/IP/跨域链接影响播放与下载。
-        const isVideoTask =
-          record.action === TASK_ACTION_GENERATE ||
-          record.action === TASK_ACTION_TEXT_GENERATE ||
-          record.action === TASK_ACTION_FIRST_TAIL_GENERATE ||
-          record.action === TASK_ACTION_REFERENCE_GENERATE ||
-          record.action === TASK_ACTION_REMIX_GENERATE;
         const isSuccess = record.status === 'SUCCESS';
         const taskId = record.task_id || record.TaskID || record.id;
-        const resultUrl = taskId
+        const proxyUrl = taskId
           ? `/v1/videos/${encodeURIComponent(taskId)}/content`
           : record.result_url;
+        const resultUrl = proxyUrl || record.result_url;
+        const isVideoTask = isVideoPreviewTask(record, resultUrl);
         const hasResultUrl = typeof resultUrl === 'string' && resultUrl.length > 0;
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -13,6 +14,24 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func parseRootTaskStatusFilter(c *gin.Context) string {
+	if c.GetInt("role") != common.RoleRootUser {
+		return ""
+	}
+	status := strings.ToUpper(strings.TrimSpace(c.Query("status")))
+	switch model.TaskStatus(status) {
+	case model.TaskStatusNotStart,
+		model.TaskStatusSubmitted,
+		model.TaskStatusQueued,
+		model.TaskStatusInProgress,
+		model.TaskStatusFailure,
+		model.TaskStatusSuccess:
+		return status
+	default:
+		return ""
+	}
+}
 
 // UpdateTaskBulk 薄入口，实际轮询逻辑在 service 层
 func UpdateTaskBulk() {
@@ -28,7 +47,7 @@ func GetAllTask(c *gin.Context) {
 	queryParams := model.SyncTaskQueryParams{
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
-		Status:         c.Query("status"),
+		Status:         parseRootTaskStatusFilter(c),
 		Action:         c.Query("action"),
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
@@ -53,7 +72,6 @@ func GetUserTask(c *gin.Context) {
 	queryParams := model.SyncTaskQueryParams{
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
-		Status:         c.Query("status"),
 		Action:         c.Query("action"),
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
