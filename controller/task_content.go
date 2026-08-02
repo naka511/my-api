@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -59,6 +60,9 @@ func buildTaskContentSummary(task *model.Task, requestBody []byte) map[string]an
 
 	var payload any
 	if err := common.Unmarshal(requestBody, &payload); err != nil {
+		if prompt := extractPromptFromRawRequestBody(requestBody); prompt != "" {
+			summary["prompt"] = truncateTaskContentString(prompt, taskContentMaxStringLength)
+		}
 		summary["request_body_preview"] = truncateTaskContentString(string(requestBody), taskContentMaxRawLength)
 		return summary
 	}
@@ -106,6 +110,9 @@ func buildTaskContentPreview(task *model.Task) string {
 	if len(task.PrivateData.SubmitRequestBody) == 0 || len(task.PrivateData.SubmitRequestBody) > taskContentPreviewBodyMax {
 		return ""
 	}
+	if preview := extractPromptFromRawRequestBody(task.PrivateData.SubmitRequestBody); preview != "" {
+		return truncateTaskContentRunes(preview, taskContentPreviewLength)
+	}
 
 	var payload any
 	if err := common.Unmarshal(task.PrivateData.SubmitRequestBody, &payload); err != nil {
@@ -114,6 +121,50 @@ func buildTaskContentPreview(task *model.Task) string {
 	collector := &taskContentCollector{}
 	collector.walk(payload, "")
 	return truncateTaskContentRunes(collector.Prompt, taskContentPreviewLength)
+}
+
+func extractPromptFromRawRequestBody(body []byte) string {
+	raw := strings.TrimSpace(string(body))
+	if raw == "" {
+		return ""
+	}
+	if values, err := url.ParseQuery(raw); err == nil {
+		for _, key := range []string{"prompt", "input", "text", "content"} {
+			if value := strings.TrimSpace(values.Get(key)); value != "" {
+				return value
+			}
+		}
+	}
+	for _, key := range []string{"prompt", "input", "text", "content"} {
+		if value := extractMultipartTextField(raw, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func extractMultipartTextField(raw string, field string) string {
+	marker := fmt.Sprintf(`name="%s"`, field)
+	idx := strings.Index(raw, marker)
+	if idx < 0 {
+		return ""
+	}
+	part := raw[idx+len(marker):]
+	for _, sep := range []string{"\r\n\r\n", "\n\n"} {
+		start := strings.Index(part, sep)
+		if start < 0 {
+			continue
+		}
+		value := part[start+len(sep):]
+		for _, endSep := range []string{"\r\n--", "\n--"} {
+			if end := strings.Index(value, endSep); end >= 0 {
+				value = value[:end]
+				break
+			}
+		}
+		return strings.TrimSpace(value)
+	}
+	return ""
 }
 
 func taskContentPromptFromSummary(summary map[string]any) string {
