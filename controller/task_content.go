@@ -15,7 +15,7 @@ const (
 	taskContentMaxRawLength    = 4000
 	taskContentMaxItems        = 20
 	taskContentPreviewLength   = 12
-	taskContentPreviewBodyMax  = 64 * 1024
+	taskContentPreviewBodyMax  = 512 * 1024
 )
 
 func GetTaskContent(c *gin.Context) {
@@ -93,6 +93,16 @@ func buildTaskContentPreview(task *model.Task) string {
 	if preview := strings.TrimSpace(task.Properties.Input); preview != "" {
 		return truncateTaskContentRunes(preview, taskContentPreviewLength)
 	}
+	if len(task.Data) > 0 {
+		var payload any
+		if err := common.Unmarshal(task.Data, &payload); err == nil {
+			collector := &taskContentCollector{}
+			collector.walk(payload, "")
+			if collector.Prompt != "" {
+				return truncateTaskContentRunes(collector.Prompt, taskContentPreviewLength)
+			}
+		}
+	}
 	if len(task.PrivateData.SubmitRequestBody) == 0 || len(task.PrivateData.SubmitRequestBody) > taskContentPreviewBodyMax {
 		return ""
 	}
@@ -110,14 +120,9 @@ func taskContentPromptFromSummary(summary map[string]any) string {
 	if len(summary) == 0 {
 		return ""
 	}
-	for _, key := range []string{"prompt", "input", "text"} {
-		if value, ok := summary[key].(string); ok {
-			if value = strings.TrimSpace(value); value != "" {
-				return value
-			}
-		}
-	}
-	return ""
+	collector := &taskContentCollector{}
+	collector.walk(summary, "")
+	return collector.Prompt
 }
 
 type taskContentCollector struct {
@@ -155,7 +160,7 @@ func (c *taskContentCollector) collectString(key string, value string) {
 		c.collectParam(key, fmt.Sprintf("[large content omitted, %d chars]", len(value)))
 		return
 	}
-	if strings.Contains(lowerKey, "prompt") || lowerKey == "input" || lowerKey == "text" {
+	if strings.Contains(lowerKey, "prompt") || lowerKey == "input" || lowerKey == "text" || lowerKey == "content" {
 		if c.Prompt == "" {
 			c.Prompt = truncateTaskContentString(value, taskContentMaxStringLength)
 		}

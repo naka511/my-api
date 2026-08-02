@@ -123,8 +123,8 @@ func tasksToDto(tasks []*model.Task, fillUser bool, includeContentPreview bool) 
 			}
 		}
 		taskDto := relay.TaskModel2Dto(task)
-		if includeContentPreview {
-			taskDto.ContentPreview = buildTaskContentPreview(task)
+		if !includeContentPreview {
+			taskDto.ContentPreview = ""
 		}
 		result[i] = taskDto
 	}

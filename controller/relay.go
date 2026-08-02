@@ -504,6 +504,7 @@ func RelayTask(c *gin.Context) {
 
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
+	var submitRequestBody []byte
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
@@ -549,6 +550,9 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
+		if requestBody, bodyErr := bodyStorage.Bytes(); bodyErr == nil {
+			submitRequestBody = requestBody
+		}
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
@@ -581,6 +585,7 @@ func RelayTask(c *gin.Context) {
 		service.LogTaskConsumption(c, relayInfo)
 
 		task := model.InitTask(result.Platform, relayInfo)
+		task.PrivateData.SubmitContentSummary = buildTaskContentSummary(task, submitRequestBody)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
@@ -598,6 +603,7 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		task.Status = model.TaskStatusSubmitted
 		task.Progress = "10%"
+		task.ContentPreview = buildTaskContentPreview(task)
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}

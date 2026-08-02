@@ -87,6 +87,8 @@ func RelayTaskLocalQueue(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool 
 
 	task := model.InitTask(prepared.Platform, relayInfo)
 	task.PrivateData.SubmitRequestBody = requestBody
+	task.PrivateData.SubmitContentSummary = buildTaskContentSummary(task, requestBody)
+	task.ContentPreview = buildTaskContentPreview(task)
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
