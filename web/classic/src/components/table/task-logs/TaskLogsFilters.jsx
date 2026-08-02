@@ -87,6 +87,18 @@ const TaskLogsFilters = ({
             />
           )}
 
+          {/* 用户名称 - 仅超级管理员可见 */}
+          {isRootUser && (
+            <Form.Input
+              field='username'
+              prefix={<IconSearch />}
+              placeholder={t('用户名称')}
+              showClear
+              pure
+              size='small'
+            />
+          )}
+
           {/* 任务状态 - 仅超级管理员可见 */}
           {isRootUser && (
             <Form.Select

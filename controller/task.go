@@ -43,6 +43,21 @@ func GetAllTask(c *gin.Context) {
 
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	userIDs := []int(nil)
+	if c.GetInt("role") == common.RoleRootUser {
+		username := strings.TrimSpace(c.Query("username"))
+		if username != "" {
+			var err error
+			userIDs, err = model.GetUserIdsByUsernameFilter(username)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			if len(userIDs) == 0 {
+				userIDs = []int{-1}
+			}
+		}
+	}
 	// 解析其他查询参数
 	queryParams := model.SyncTaskQueryParams{
 		Platform:       constant.TaskPlatform(c.Query("platform")),
@@ -52,12 +67,13 @@ func GetAllTask(c *gin.Context) {
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
 		ChannelID:      c.Query("channel_id"),
+		UserIDs:        userIDs,
 	}
 
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true))
+	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role") == common.RoleRootUser))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -80,11 +96,11 @@ func GetUserTask(c *gin.Context) {
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, false))
+	pageInfo.SetItems(tasksToDto(items, false, false))
 	common.ApiSuccess(c, pageInfo)
 }
 
-func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
+func tasksToDto(tasks []*model.Task, fillUser bool, includeContentPreview bool) []*dto.TaskDto {
 	var userIdMap map[int]*model.UserBase
 	if fillUser {
 		userIdMap = make(map[int]*model.UserBase)
@@ -106,7 +122,11 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 				task.Username = user.Username
 			}
 		}
-		result[i] = relay.TaskModel2Dto(task)
+		taskDto := relay.TaskModel2Dto(task)
+		if includeContentPreview {
+			taskDto.ContentPreview = buildTaskContentPreview(task)
+		}
+		result[i] = taskDto
 	}
 	return result
 }

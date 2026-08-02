@@ -651,7 +651,7 @@ func applyTaskSummaryVideoFilters(tx *gorm.DB, startTimestamp int64, endTimestam
 		}
 	}
 	if username != "" {
-		userIds, err := getUserIdsByUsernameFilter(username)
+		userIds, err := GetUserIdsByUsernameFilter(username)
 		if err != nil {
 			return nil, err
 		}
@@ -664,7 +664,7 @@ func applyTaskSummaryVideoFilters(tx *gorm.DB, startTimestamp int64, endTimestam
 	return tx, nil
 }
 
-func getUserIdsByUsernameFilter(username string) ([]int, error) {
+func GetUserIdsByUsernameFilter(username string) ([]int, error) {
 	var users []User
 	tx := DB.Model(&User{})
 	if strings.Contains(username, "%") {

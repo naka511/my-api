@@ -14,6 +14,8 @@ const (
 	taskContentMaxStringLength = 600
 	taskContentMaxRawLength    = 4000
 	taskContentMaxItems        = 20
+	taskContentPreviewLength   = 12
+	taskContentPreviewBodyMax  = 64 * 1024
 )
 
 func GetTaskContent(c *gin.Context) {
@@ -79,6 +81,43 @@ func buildTaskContentSummary(task *model.Task, requestBody []byte) map[string]an
 	}
 	summary["request_body_preview"] = truncateTaskContentString(common.GetJsonString(payload), taskContentMaxRawLength)
 	return summary
+}
+
+func buildTaskContentPreview(task *model.Task) string {
+	if task == nil {
+		return ""
+	}
+	if preview := taskContentPromptFromSummary(task.PrivateData.SubmitContentSummary); preview != "" {
+		return truncateTaskContentRunes(preview, taskContentPreviewLength)
+	}
+	if preview := strings.TrimSpace(task.Properties.Input); preview != "" {
+		return truncateTaskContentRunes(preview, taskContentPreviewLength)
+	}
+	if len(task.PrivateData.SubmitRequestBody) == 0 || len(task.PrivateData.SubmitRequestBody) > taskContentPreviewBodyMax {
+		return ""
+	}
+
+	var payload any
+	if err := common.Unmarshal(task.PrivateData.SubmitRequestBody, &payload); err != nil {
+		return ""
+	}
+	collector := &taskContentCollector{}
+	collector.walk(payload, "")
+	return truncateTaskContentRunes(collector.Prompt, taskContentPreviewLength)
+}
+
+func taskContentPromptFromSummary(summary map[string]any) string {
+	if len(summary) == 0 {
+		return ""
+	}
+	for _, key := range []string{"prompt", "input", "text"} {
+		if value, ok := summary[key].(string); ok {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 type taskContentCollector struct {
@@ -175,6 +214,18 @@ func truncateTaskContentString(value string, maxLen int) string {
 		return value
 	}
 	return value[:maxLen] + fmt.Sprintf("... [truncated, %d chars]", len(value))
+}
+
+func truncateTaskContentRunes(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxLen {
+		return value
+	}
+	return string(runes[:maxLen]) + "..."
 }
 
 func firstNonEmpty(values ...string) string {

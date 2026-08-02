@@ -417,15 +417,17 @@ export const getTaskLogsColumns = ({
         if (!isRootUser) {
           return <></>;
         }
+        const previewText = record?.content_preview || t('查看');
         return (
           <a
             href='#'
+            title={previewText}
             onClick={(e) => {
               e.preventDefault();
               openTaskContentModal(text);
             }}
           >
-            {t('查看')}
+            {previewText}
           </a>
         );
       },
