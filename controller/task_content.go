@@ -177,10 +177,11 @@ func taskContentPromptFromSummary(summary map[string]any) string {
 }
 
 type taskContentCollector struct {
-	Prompt string
-	Images []string
-	Videos []string
-	Params map[string]any
+	Prompt         string
+	PromptPriority int
+	Images         []string
+	Videos         []string
+	Params         map[string]any
 }
 
 func (c *taskContentCollector) walk(value any, key string) {
@@ -207,14 +208,17 @@ func (c *taskContentCollector) collectString(key string, value string) {
 	}
 	lowerKey := strings.ToLower(key)
 	lowerValue := strings.ToLower(value)
+	if strings.HasPrefix(lowerValue, "[large content omitted") ||
+		strings.HasPrefix(lowerValue, "[truncated") {
+		c.collectParam(key, value)
+		return
+	}
 	if strings.Contains(lowerValue, ";base64,") || (len(value) > 1000 && !strings.Contains(value, "://")) {
 		c.collectParam(key, fmt.Sprintf("[large content omitted, %d chars]", len(value)))
 		return
 	}
-	if strings.Contains(lowerKey, "prompt") || lowerKey == "input" || lowerKey == "text" || lowerKey == "content" {
-		if c.Prompt == "" {
-			c.Prompt = truncateTaskContentString(value, taskContentMaxStringLength)
-		}
+	if priority := taskContentPromptKeyPriority(lowerKey); priority > 0 {
+		c.collectPrompt(value, priority)
 		return
 	}
 	if strings.Contains(lowerKey, "image") || looksLikeImageURL(lowerValue) {
@@ -226,6 +230,30 @@ func (c *taskContentCollector) collectString(key string, value string) {
 		return
 	}
 	c.collectParam(key, truncateTaskContentString(value, taskContentMaxStringLength))
+}
+
+func (c *taskContentCollector) collectPrompt(value string, priority int) {
+	if priority < c.PromptPriority {
+		return
+	}
+	if priority == c.PromptPriority && c.Prompt != "" {
+		return
+	}
+	c.Prompt = truncateTaskContentString(value, taskContentMaxStringLength)
+	c.PromptPriority = priority
+}
+
+func taskContentPromptKeyPriority(lowerKey string) int {
+	switch {
+	case strings.Contains(lowerKey, "prompt"):
+		return 4
+	case lowerKey == "input" || lowerKey == "text":
+		return 3
+	case lowerKey == "content":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (c *taskContentCollector) collectParam(key string, value any) {

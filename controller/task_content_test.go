@@ -32,3 +32,15 @@ func TestBuildTaskContentPreviewFromMultipart(t *testing.T) {
 		t.Fatalf("unexpected preview: %q", got)
 	}
 }
+
+func TestBuildTaskContentPreviewPrefersPromptOverLargeContentPlaceholder(t *testing.T) {
+	task := &model.Task{}
+	task.PrivateData.SubmitContentSummary = map[string]any{
+		"content": "[large content omitted, 123456 chars]",
+		"prompt":  "兔子在草地上奔跑，柔和阳光",
+	}
+
+	if got := buildTaskContentPreview(task); got != "兔子在草地上奔跑，柔和阳..." {
+		t.Fatalf("unexpected preview: %q", got)
+	}
+}
