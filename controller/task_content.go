@@ -123,6 +123,18 @@ func buildTaskContentPreview(task *model.Task) string {
 	return truncateTaskContentRunes(collector.Prompt, taskContentPreviewLength)
 }
 
+func buildAndPersistTaskContentPreview(task *model.Task) string {
+	preview := buildTaskContentPreview(task)
+	if preview == "" || task == nil || task.ID == 0 {
+		return preview
+	}
+	task.ContentPreview = preview
+	if err := model.UpdateTaskContentPreview(task.ID, preview); err != nil {
+		common.SysLog(fmt.Sprintf("failed to update task content preview: task_id=%s, id=%d, err=%v", task.TaskID, task.ID, err))
+	}
+	return preview
+}
+
 func extractPromptFromRawRequestBody(body []byte) string {
 	raw := strings.TrimSpace(string(body))
 	if raw == "" {

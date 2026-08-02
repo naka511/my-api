@@ -539,6 +539,15 @@ func TaskBulkUpdateByID(ids []int64, params map[string]any) error {
 		Updates(params).Error
 }
 
+func UpdateTaskContentPreview(id int64, preview string) error {
+	if id == 0 || preview == "" {
+		return nil
+	}
+	return DB.Model(&Task{}).
+		Where("id = ? AND (content_preview = ? OR content_preview IS NULL)", id, "").
+		Update("content_preview", preview).Error
+}
+
 type TaskQuotaUsage struct {
 	Mode  string  `json:"mode"`
 	Count float64 `json:"count"`
