@@ -194,9 +194,18 @@ type taskContentCollector struct {
 	Images         []string
 	Videos         []string
 	Params         map[string]any
+	Depth          int
 }
 
 func (c *taskContentCollector) walk(value any, key string) {
+	if c.Depth > 6 {
+		return
+	}
+	c.Depth++
+	defer func() {
+		c.Depth--
+	}()
+
 	switch v := value.(type) {
 	case map[string]any:
 		for childKey, childValue := range v {
@@ -232,6 +241,13 @@ func (c *taskContentCollector) collectString(key string, value string) {
 	if priority := taskContentPromptKeyPriority(lowerKey); priority > 0 {
 		c.collectPrompt(value, priority)
 		return
+	}
+	if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
+		var payload any
+		if err := common.Unmarshal([]byte(value), &payload); err == nil {
+			c.walk(payload, key)
+			return
+		}
 	}
 	if strings.Contains(lowerKey, "image") || looksLikeImageURL(lowerValue) {
 		c.Images = appendLimited(c.Images, truncateTaskContentString(value, taskContentMaxStringLength))

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -41,6 +42,24 @@ func TestBuildTaskContentPreviewPrefersPromptOverLargeContentPlaceholder(t *test
 	}
 
 	if got := buildTaskContentPreview(task); got != "兔子在草地上奔跑，柔和阳..." {
+		t.Fatalf("unexpected preview: %q", got)
+	}
+}
+
+func TestBuildTaskContentPreviewFromLegacyData(t *testing.T) {
+	task := &model.Task{}
+	task.Data = json.RawMessage(`{"data":{"prompt":"旧任务里的老虎在河边散步，镜头平移"}}`)
+
+	if got := buildTaskContentPreview(task); got != "旧任务里的老虎在河边散..." {
+		t.Fatalf("unexpected preview: %q", got)
+	}
+}
+
+func TestBuildTaskContentPreviewFromStringifiedLegacyData(t *testing.T) {
+	task := &model.Task{}
+	task.Data = json.RawMessage(`"{\"data\":{\"prompt\":\"字符串旧任务里的机器人在跳舞\"}}"`)
+
+	if got := buildTaskContentPreview(task); got != "字符串旧任务里的机器人在..." {
 		t.Fatalf("unexpected preview: %q", got)
 	}
 }

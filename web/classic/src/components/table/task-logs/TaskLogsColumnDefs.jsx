@@ -165,6 +165,121 @@ const getTaskModelDisplayName = (record) => {
   );
 };
 
+const truncateTaskContentPreview = (text, length = 12) => {
+  const value = String(text || '').trim();
+  if (!value) {
+    return '';
+  }
+  const chars = Array.from(value);
+  return chars.length > length ? `${chars.slice(0, length).join('')}...` : value;
+};
+
+const isUsablePromptPreview = (value) => {
+  const text = String(value || '').trim();
+  if (!text) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  return (
+    !lower.startsWith('[large content omitted') &&
+    !lower.startsWith('[truncated') &&
+    !/^data:[^;]+;base64,/i.test(text) &&
+    text.length <= 600
+  );
+};
+
+const getValueByPath = (source, path) => {
+  if (!source || !path) {
+    return undefined;
+  }
+  return path.split('.').reduce((current, key) => {
+    if (current && typeof current === 'object') {
+      return current[key];
+    }
+    return undefined;
+  }, source);
+};
+
+const isPromptLikeKey = (key) => {
+  const normalized = String(key || '').toLowerCase();
+  return (
+    normalized === 'prompt' ||
+    normalized === 'input' ||
+    normalized === 'text' ||
+    normalized === 'content' ||
+    normalized.endsWith('_prompt') ||
+    normalized.includes('prompt_')
+  );
+};
+
+const collectTaskPromptPreview = (source, depth = 0, key = '') => {
+  if (!source || depth > 4) {
+    return '';
+  }
+  if (typeof source === 'string') {
+    const trimmed = source.trim();
+    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && !isPromptLikeKey(key)) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        const preview = collectTaskPromptPreview(parsed, depth + 1, key);
+        if (preview) {
+          return preview;
+        }
+      } catch (error) {
+        // Ignore invalid JSON strings; they may be plain prompt-like text.
+      }
+    }
+    return isPromptLikeKey(key) && isUsablePromptPreview(source) ? source : '';
+  }
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const preview = collectTaskPromptPreview(item, depth + 1, key);
+      if (preview) {
+        return preview;
+      }
+    }
+    return '';
+  }
+  if (typeof source !== 'object') {
+    return '';
+  }
+
+  const promptKeys = ['prompt', 'input', 'text', 'content'];
+  for (const promptKey of promptKeys) {
+    if (isUsablePromptPreview(source[promptKey])) {
+      return source[promptKey];
+    }
+  }
+  for (const [childKey, value] of Object.entries(source)) {
+    const preview = collectTaskPromptPreview(value, depth + 1, childKey);
+    if (preview) {
+      return preview;
+    }
+  }
+  return '';
+};
+
+const getTaskContentPreview = (record, t) => {
+  const explicitPreview = record?.content_preview;
+  if (isUsablePromptPreview(explicitPreview)) {
+    return explicitPreview;
+  }
+
+  const candidates = [
+    getValueByPath(record, 'properties.input'),
+    getValueByPath(record, 'data.prompt'),
+    getValueByPath(record, 'data.input'),
+    getValueByPath(record, 'data.text'),
+    getValueByPath(record, 'data.content'),
+    getValueByPath(record, 'data.data.prompt'),
+    getValueByPath(record, 'data.data.input'),
+    getValueByPath(record, 'data.properties.input'),
+    collectTaskPromptPreview(record?.data),
+  ];
+  const fallback = candidates.find(isUsablePromptPreview);
+  return fallback ? truncateTaskContentPreview(fallback) : t('查看');
+};
+
 const isVideoPreviewTask = (record, resultUrl) => {
   const action = String(record?.action || '').toLowerCase();
   const modelName = getTaskModelName(record);
@@ -417,7 +532,7 @@ export const getTaskLogsColumns = ({
         if (!isRootUser) {
           return <></>;
         }
-        const previewText = record?.content_preview || t('查看');
+        const previewText = getTaskContentPreview(record, t);
         return (
           <a
             href='#'
