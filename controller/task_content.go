@@ -234,10 +234,6 @@ func (c *taskContentCollector) collectString(key string, value string) {
 		c.collectParam(key, value)
 		return
 	}
-	if strings.Contains(lowerValue, ";base64,") || (len(value) > 1000 && !strings.Contains(value, "://")) {
-		c.collectParam(key, fmt.Sprintf("[large content omitted, %d chars]", len(value)))
-		return
-	}
 	if priority := taskContentPromptKeyPriority(lowerKey); priority > 0 {
 		c.collectPrompt(value, priority)
 		return
@@ -248,6 +244,10 @@ func (c *taskContentCollector) collectString(key string, value string) {
 			c.walk(payload, key)
 			return
 		}
+	}
+	if strings.Contains(lowerValue, ";base64,") || (len(value) > 1000 && !strings.Contains(value, "://")) {
+		c.collectParam(key, fmt.Sprintf("[large content omitted, %d chars]", len(value)))
+		return
 	}
 	if strings.Contains(lowerKey, "image") || looksLikeImageURL(lowerValue) {
 		c.Images = appendLimited(c.Images, truncateTaskContentString(value, taskContentMaxStringLength))

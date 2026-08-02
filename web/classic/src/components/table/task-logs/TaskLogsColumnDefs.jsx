@@ -188,6 +188,19 @@ const isUsablePromptPreview = (value) => {
   );
 };
 
+const isUsablePromptText = (value) => {
+  const text = String(value || '').trim();
+  if (!text) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  return (
+    !lower.startsWith('[large content omitted') &&
+    !lower.startsWith('[truncated') &&
+    !/^data:[^;]+;base64,/i.test(text)
+  );
+};
+
 const getValueByPath = (source, path) => {
   if (!source || !path) {
     return undefined;
@@ -229,7 +242,7 @@ const collectTaskPromptPreview = (source, depth = 0, key = '') => {
         // Ignore invalid JSON strings; they may be plain prompt-like text.
       }
     }
-    return isPromptLikeKey(key) && isUsablePromptPreview(source) ? source : '';
+    return isPromptLikeKey(key) && isUsablePromptText(source) ? source : '';
   }
   if (Array.isArray(source)) {
     for (const item of source) {
@@ -246,7 +259,7 @@ const collectTaskPromptPreview = (source, depth = 0, key = '') => {
 
   const promptKeys = ['prompt', 'input', 'text', 'content'];
   for (const promptKey of promptKeys) {
-    if (isUsablePromptPreview(source[promptKey])) {
+    if (isUsablePromptText(source[promptKey])) {
       return source[promptKey];
     }
   }

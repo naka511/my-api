@@ -63,3 +63,17 @@ func TestBuildTaskContentPreviewFromStringifiedLegacyData(t *testing.T) {
 		t.Fatalf("unexpected preview: %q", got)
 	}
 }
+
+func TestBuildTaskContentPreviewFromRequestBodyPreview(t *testing.T) {
+	task := &model.Task{}
+	task.PrivateData.SubmitContentSummary = map[string]any{
+		"params": map[string]any{
+			"prompt": "[large content omitted, 3130 chars]",
+		},
+		"request_body_preview": `{"model":"video-2.0","prompt":"【人物】：禹乔参考图1（大学生乔.png），系统514参考图2"}`,
+	}
+
+	if got := buildTaskContentPreview(task); got != "【人物】：禹乔参考图1..." {
+		t.Fatalf("unexpected preview: %q", got)
+	}
+}
