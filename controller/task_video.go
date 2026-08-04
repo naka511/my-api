@@ -158,7 +158,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 		}
 
 		// 如果返回了 total_tokens 并且配置了模型倍率(非固定价格),则重新计费
-		if taskResult.TotalTokens > 0 {
+		if taskResult.TotalTokens > 0 && (task.PrivateData.BillingContext == nil || !task.PrivateData.BillingContext.PerCallBilling) {
 			// 获取模型名称
 			var taskData map[string]interface{}
 			if err := common.Unmarshal(task.Data, &taskData); err == nil {

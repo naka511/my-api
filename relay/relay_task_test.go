@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShouldApplyTaskOtherRatiosKeepsLegacyPerRequestPrice(t *testing.T) {
+func TestShouldApplyTaskOtherRatiosSkipsPerRequestPrice(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		PriceData: types.PriceData{
 			UsePrice: true,
 		},
 	}
 
-	require.True(t, shouldApplyTaskOtherRatios(info, "video-2.0-fast"))
+	require.False(t, shouldApplyTaskOtherRatios(info, "video-2.0-fast"))
 }
 
 func TestShouldApplyTaskOtherRatiosKeepsUsageRatioBilling(t *testing.T) {

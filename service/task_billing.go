@@ -23,7 +23,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	// fixed_price 是明确的固定收费模式，不参与 seconds / duration 等参数倍率。
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeFixedPrice {
 		logContent = fmt.Sprintf("%s，固定收费", logContent)
-	} else if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	} else if info.PriceData.UsePrice || common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		if len(info.PriceData.OtherRatios) > 0 {
@@ -220,6 +220,15 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if actualQuota <= 0 {
 		return
 	}
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次/固定计费，跳过差额结算（保持预扣：%s，候选实际：%s，%s）",
+			task.TaskID,
+			logger.LogQuota(task.Quota),
+			logger.LogQuota(actualQuota),
+			reason,
+		))
+		return
+	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
 
@@ -281,6 +290,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
 func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
 	if totalTokens <= 0 {
+		return
+	}
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次/固定计费，跳过 token 重算（tokens=%d）", task.TaskID, totalTokens))
 		return
 	}
 

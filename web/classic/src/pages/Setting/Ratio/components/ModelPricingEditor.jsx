@@ -409,7 +409,7 @@ export default function ModelPricingEditor({
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
-                      '普通按量/按次直接填价格就行；固定收费会忽略 seconds、duration 等参数倍率；如果价格要跟请求参数或请求头联动，请切到表达式/阶梯计费。',
+                      '按次收费会严格按单次价格扣费，不再叠加 seconds、duration 等参数倍率；如果价格要跟请求参数或请求头联动，请切到表达式/阶梯计费。',
                     )}
                   </div>
                 </div>
@@ -446,7 +446,7 @@ export default function ModelPricingEditor({
                     extraText={
                       selectedModel.billingMode === 'fixed-price'
                         ? t('生成一次固定扣费，seconds / duration 不参与计费。')
-                        : t('适合 MJ / 任务类等按次收费模型，可继续使用参数倍率。')
+                        : t('生成一次按单次价格扣费，seconds / duration 不参与计费。')
                     }
                   />
                 ) : selectedModel.billingMode === 'tiered_expr' ? (

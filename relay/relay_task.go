@@ -289,8 +289,14 @@ func PrepareTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmit
 	}, nil
 }
 
-func shouldApplyTaskOtherRatios(_ *relaycommon.RelayInfo, modelName string) bool {
+func shouldApplyTaskOtherRatios(info *relaycommon.RelayInfo, modelName string) bool {
+	if info != nil && strings.TrimSpace(info.OriginModelName) != "" {
+		modelName = info.OriginModelName
+	}
 	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeFixedPrice {
+		return false
+	}
+	if info != nil && info.PriceData.UsePrice {
 		return false
 	}
 	return true
