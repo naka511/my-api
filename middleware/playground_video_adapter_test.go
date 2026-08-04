@@ -83,6 +83,33 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 				"size":     "2560x1440",
 			},
 		},
+		{
+			name:         "video extracts image urls from multimodal user message",
+			path:         "/pg/video/generations",
+			body:         `{"model":"video-2.0","messages":[{"role":"user","content":[{"type":"text","text":"use this reference"},{"type":"image_url","image_url":{"url":"https://example.com/ref.png"}}]}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":           "video-2.0",
+				"prompt":          "use this reference",
+				"seconds":         "4",
+				"size":            "1280x720",
+				"image_url":       "https://example.com/ref.png",
+				"input_reference": "https://example.com/ref.png",
+			},
+		},
+		{
+			name:         "video extracts multiple image urls from multimodal user message",
+			path:         "/pg/video/generations",
+			body:         `{"model":"video-2.0","messages":[{"role":"user","content":[{"type":"text","text":"use refs"},{"type":"image_url","image_url":{"url":"https://example.com/a.png"}},{"type":"image_url","image_url":{"url":"https://example.com/b.png"}}]}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":      "video-2.0",
+				"prompt":     "use refs",
+				"seconds":    "4",
+				"size":       "1280x720",
+				"image_urls": []any{"https://example.com/a.png", "https://example.com/b.png"},
+			},
+		},
 	}
 
 	for _, test := range tests {

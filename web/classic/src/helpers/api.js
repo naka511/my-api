@@ -142,6 +142,13 @@ export const buildApiPayload = (
 
   if (getModelCapability(inputs.model) === MODEL_CAPABILITIES.VIDEO) {
     payload.duration = getValidVideoDuration(inputs.model, inputs.duration);
+    const imageUrls = extractImageUrlsFromMessages(processedMessages);
+    if (imageUrls.length === 1) {
+      payload.image_url = imageUrls[0];
+      payload.input_reference = imageUrls[0];
+    } else if (imageUrls.length > 1) {
+      payload.image_urls = imageUrls;
+    }
   }
 
   // 添加启用的参数
@@ -176,6 +183,28 @@ export const buildApiPayload = (
   });
 
   return payload;
+};
+
+const extractImageUrlsFromMessages = (messages = []) => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.role !== MESSAGE_ROLES.USER || !Array.isArray(message.content)) {
+      continue;
+    }
+    const urls = message.content
+      .filter((item) => item?.type === 'image_url')
+      .map((item) => {
+        if (typeof item.image_url === 'string') return item.image_url;
+        return item.image_url?.url;
+      })
+      .filter((url) => typeof url === 'string' && url.trim() !== '')
+      .map((url) => url.trim());
+
+    if (urls.length > 0) {
+      return urls;
+    }
+  }
+  return [];
 };
 
 // 处理API错误响应

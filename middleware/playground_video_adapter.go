@@ -128,6 +128,17 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	if size, ok := videoBody["size"].(string); ok && isMiniMaxH3Model(modelName) {
 		videoBody["size"] = normalizeMiniMaxH3SizeValue(size)
 	}
+	if _, hasImageURL := videoBody["image_url"]; !hasImageURL {
+		if _, hasImageURLs := videoBody["image_urls"]; !hasImageURLs {
+			imageURLs := extractPlaygroundImageURLs(body["messages"])
+			if len(imageURLs) == 1 {
+				videoBody["image_url"] = imageURLs[0]
+				videoBody["input_reference"] = imageURLs[0]
+			} else if len(imageURLs) > 1 {
+				videoBody["image_urls"] = imageURLs
+			}
+		}
+	}
 	for _, key := range []string{
 		"aspect_ratio",
 		"resolution",
@@ -188,6 +199,48 @@ func normalizeVideoSeconds(value any, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func extractPlaygroundImageURLs(messagesValue any) []string {
+	messages, ok := messagesValue.([]any)
+	if !ok {
+		return nil
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		message, ok := messages[i].(map[string]any)
+		if !ok || message["role"] != "user" {
+			continue
+		}
+		content, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		var urls []string
+		for _, item := range content {
+			part, ok := item.(map[string]any)
+			if !ok || part["type"] != "image_url" {
+				continue
+			}
+			imageURLValue, ok := part["image_url"]
+			if !ok {
+				continue
+			}
+			switch imageURL := imageURLValue.(type) {
+			case string:
+				if strings.TrimSpace(imageURL) != "" {
+					urls = append(urls, strings.TrimSpace(imageURL))
+				}
+			case map[string]any:
+				if url, ok := imageURL["url"].(string); ok && strings.TrimSpace(url) != "" {
+					urls = append(urls, strings.TrimSpace(url))
+				}
+			}
+		}
+		if len(urls) > 0 {
+			return urls
+		}
+	}
+	return nil
 }
 
 func extractPlaygroundBodyPrompt(body map[string]any) string {
