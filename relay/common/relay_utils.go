@@ -103,6 +103,10 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 		if duration, err := strconv.Atoi(durationStr); err == nil {
 			req.Duration = duration
 		}
+	} else if durationStr := formData.Get("duration"); durationStr != "" {
+		if duration, err := strconv.Atoi(durationStr); err == nil {
+			req.Duration = duration
+		}
 	}
 
 	if images := formData["images"]; len(images) > 0 {
@@ -221,10 +225,11 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 		if err != nil {
 			return createTaskError(err, "invalid_multipart_form", http.StatusBadRequest, true)
 		}
-	}
-	// 为了metadata字段的兼容性，统一UnmarshalBodyReusable
-	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
-		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	} else {
+		// 为了metadata字段的兼容性，统一UnmarshalBodyReusable
+		if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+			return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+		}
 	}
 
 	if taskErr := validatePrompt(req.Prompt); taskErr != nil {

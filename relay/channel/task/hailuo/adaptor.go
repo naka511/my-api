@@ -217,6 +217,20 @@ func (a *TaskAdaptor) convertToMiniMaxH3RequestPayload(req *relaycommon.TaskSubm
 	if err := req.UnmarshalMetadata(&videoRequest); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata to minimax-h3 request failed")
 	}
+	videoRequest.Model = ModelMiniMaxH3
+	videoRequest.Duration = &duration
+	videoRequest.Width = width
+	videoRequest.Height = height
+	videoRequest.StartImageURL = strings.TrimSpace(req.StartImageURL)
+	videoRequest.EndImageURL = strings.TrimSpace(req.EndImageURL)
+	videoRequest.AudioURL = strings.TrimSpace(req.AudioURL)
+	videoRequest.ImageURL = ""
+	videoRequest.ImageURLs = nil
+	if len(imageURLs) == 1 {
+		videoRequest.ImageURL = imageURLs[0]
+	} else if len(imageURLs) > 1 {
+		videoRequest.ImageURLs = imageURLs
+	}
 
 	return videoRequest, nil
 }

@@ -31,7 +31,8 @@ export function isVideoGenerationModel(model: string): boolean {
     normalized.includes('sora2') ||
     normalized.includes('sora-2') ||
     normalized.includes('video-2.0') ||
-    normalized.includes('ko3')
+    normalized.includes('ko3') ||
+    normalized.includes('minimax-h3')
   )
 }
 
@@ -54,14 +55,15 @@ function extractVideoPrompt(payload: ChatCompletionRequest): string {
 export async function sendVideoGeneration(
   payload: ChatCompletionRequest
 ): Promise<Record<string, unknown>> {
+  const isMiniMaxH3 = payload.model.toLowerCase() === 'minimax-h3'
   const res = await api.post(
     API_ENDPOINTS.VIDEO_GENERATIONS,
     {
       model: payload.model,
       group: payload.group,
       prompt: extractVideoPrompt(payload),
-      seconds: '4',
-      size: '1280x720',
+      seconds: isMiniMaxH3 ? '5' : '4',
+      size: isMiniMaxH3 ? '2560x1440' : '1280x720',
     },
     {
       skipErrorHandler: true,

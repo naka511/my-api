@@ -70,6 +70,19 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 				"size":     "1280x720",
 			},
 		},
+		{
+			name:         "minimax h3 uses supported 2k size",
+			path:         "/pg/video/generations",
+			body:         `{"model":"minimax-h3","duration":5,"size":"1280x720","messages":[{"role":"user","content":"h3 video"}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":    "minimax-h3",
+				"prompt":   "h3 video",
+				"duration": float64(5),
+				"seconds":  "5",
+				"size":     "2560x1440",
+			},
+		},
 	}
 
 	for _, test := range tests {

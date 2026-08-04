@@ -97,10 +97,17 @@ func buildPlaygroundImageBody(body map[string]any) map[string]any {
 }
 
 func buildPlaygroundVideoBody(body map[string]any) map[string]any {
+	modelName, _ := body["model"].(string)
+	defaultSeconds := "4"
+	defaultSize := "1280x720"
+	if isMiniMaxH3Model(modelName) {
+		defaultSeconds = "5"
+		defaultSize = "2560x1440"
+	}
 	videoBody := map[string]any{
 		"model":  body["model"],
 		"prompt": extractPlaygroundBodyPrompt(body),
-		"size":   "1280x720",
+		"size":   defaultSize,
 	}
 	if group, ok := body["group"]; ok {
 		videoBody["group"] = group
@@ -109,14 +116,17 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		videoBody["duration"] = duration
 	}
 	if seconds, ok := body["seconds"]; ok {
-		videoBody["seconds"] = normalizeVideoSeconds(seconds, "4")
+		videoBody["seconds"] = normalizeVideoSeconds(seconds, defaultSeconds)
 	} else if duration, ok := videoBody["duration"]; ok {
-		videoBody["seconds"] = normalizeVideoSeconds(duration, "4")
+		videoBody["seconds"] = normalizeVideoSeconds(duration, defaultSeconds)
 	} else if _, ok := videoBody["duration"]; !ok {
-		videoBody["seconds"] = "4"
+		videoBody["seconds"] = defaultSeconds
 	}
 	if size, ok := body["size"]; ok {
 		videoBody["size"] = size
+	}
+	if size, ok := videoBody["size"].(string); ok && isMiniMaxH3Model(modelName) {
+		videoBody["size"] = normalizeMiniMaxH3SizeValue(size)
 	}
 	for _, key := range []string{
 		"aspect_ratio",
