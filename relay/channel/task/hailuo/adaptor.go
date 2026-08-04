@@ -239,7 +239,7 @@ func resolveMiniMaxH3Size(size string, aspectRatio string) (int, int, error) {
 		if err != nil {
 			return 0, 0, err
 		}
-		return width, height, nil
+		return normalizeMiniMaxH3Size(width, height)
 	}
 
 	switch strings.TrimSpace(aspectRatio) {
@@ -276,6 +276,39 @@ func parseMiniMaxH3Size(size string) (int, int, error) {
 		return 0, 0, fmt.Errorf("size height is invalid")
 	}
 	return width, height, nil
+}
+
+func normalizeMiniMaxH3Size(width int, height int) (int, int, error) {
+	switch {
+	case width == 2560 && height == 1440:
+		return 2560, 1440, nil
+	case width == 1280 && height == 720:
+		return 2560, 1440, nil
+	case width == 1920 && height == 1080:
+		return 2560, 1440, nil
+	case width == 1440 && height == 2560:
+		return 1440, 2560, nil
+	case width == 720 && height == 1280:
+		return 1440, 2560, nil
+	case width == 1080 && height == 1920:
+		return 1440, 2560, nil
+	case width == 1440 && height == 1440:
+		return 1440, 1440, nil
+	case width == 1024 && height == 1024:
+		return 1440, 1440, nil
+	case width == 1920 && height == 1440:
+		return 1920, 1440, nil
+	case width == 1440 && height == 1080:
+		return 1920, 1440, nil
+	case width == 1440 && height == 1920:
+		return 1440, 1920, nil
+	case width == 1080 && height == 1440:
+		return 1440, 1920, nil
+	case width == 3360 && height == 1440:
+		return 3360, 1440, nil
+	default:
+		return 0, 0, fmt.Errorf("unsupported size %dx%d for minimax-h3", width, height)
+	}
 }
 
 func compactNonEmpty(values []string) []string {

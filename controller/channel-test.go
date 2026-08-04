@@ -536,14 +536,16 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 
 func testVideoChannel(c *gin.Context, testUserID int, testModel string, tik time.Time) testResult {
 	seconds := "4"
+	size := "1280x720"
 	if strings.EqualFold(strings.TrimSpace(testModel), "minimax-h3") {
 		seconds = "5"
+		size = "2560x1440"
 	}
 	jsonData, err := common.Marshal(relaycommon.TaskSubmitReq{
 		Model:   testModel,
 		Prompt:  "A calm cinematic shot of clouds over a mountain at sunrise.",
 		Seconds: seconds,
-		Size:    "1280x720",
+		Size:    size,
 	})
 	if err != nil {
 		return testResult{

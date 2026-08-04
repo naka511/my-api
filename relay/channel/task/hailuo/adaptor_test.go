@@ -45,6 +45,22 @@ func TestConvertToMiniMaxH3RequestPayloadSizeOverridesAspectRatio(t *testing.T) 
 	require.Equal(t, 2560, body.Height)
 }
 
+func TestConvertToMiniMaxH3RequestPayloadUpscalesCommonSize(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Model:  ModelMiniMaxH3,
+		Prompt: "山间云海",
+		Size:   "1280x720",
+	}
+	info := &relaycommon.RelayInfo{UpstreamModelName: ModelMiniMaxH3}
+
+	body, err := adaptor.convertToRequestPayload(req, info)
+
+	require.NoError(t, err)
+	require.Equal(t, 2560, body.Width)
+	require.Equal(t, 1440, body.Height)
+}
+
 func TestConvertToMiniMaxH3RequestPayloadImageReferences(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 	req := &relaycommon.TaskSubmitReq{
