@@ -30,6 +30,7 @@ var (
 		"kling-v3",
 		"grok-imagine-video",
 		"ko3",
+		"minimax-h3",
 	}
 	OpenAITextModels = []string{
 		"gpt-",

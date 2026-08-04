@@ -2,9 +2,11 @@ package hailuo
 
 const (
 	ChannelName = "hailuo-video"
+	ModelMiniMaxH3 = "minimax-h3"
 )
 
 var ModelList = []string{
+	ModelMiniMaxH3,
 	"MiniMax-Hailuo-2.3",
 	"MiniMax-Hailuo-2.3-Fast",
 	"MiniMax-Hailuo-02",
@@ -44,6 +46,7 @@ const (
 	Resolution720P  = "720P"
 	Resolution768P  = "768P"
 	Resolution1080P = "1080P"
+	Resolution2K    = "2K"
 )
 
 const (

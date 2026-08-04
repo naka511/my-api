@@ -86,12 +86,17 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	formData := c.Request.PostForm
 	req = TaskSubmitReq{
-		Prompt:   formData.Get("prompt"),
-		Model:    formData.Get("model"),
-		Mode:     formData.Get("mode"),
-		Image:    formData.Get("image"),
-		Size:     formData.Get("size"),
-		Metadata: make(map[string]interface{}),
+		Prompt:        formData.Get("prompt"),
+		Model:         formData.Get("model"),
+		Mode:          formData.Get("mode"),
+		Image:         formData.Get("image"),
+		ImageURL:      formData.Get("image_url"),
+		StartImageURL: formData.Get("start_image_url"),
+		EndImageURL:   formData.Get("end_image_url"),
+		AudioURL:      formData.Get("audio_url"),
+		AspectRatio:   formData.Get("aspect_ratio"),
+		Size:          formData.Get("size"),
+		Metadata:      make(map[string]interface{}),
 	}
 
 	if durationStr := formData.Get("seconds"); durationStr != "" {
@@ -102,6 +107,9 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	if images := formData["images"]; len(images) > 0 {
 		req.Images = images
+	}
+	if images := formData["image_urls"]; len(images) > 0 {
+		req.ImageURLs = images
 	}
 
 	for key, values := range formData {
@@ -115,6 +123,7 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 			}
 		}
 	}
+	normalizeTaskImages(&req)
 	return req, nil
 }
 
@@ -140,6 +149,7 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 	if req.InputReference != "" {
 		req.Images = []string{req.InputReference}
 	}
+	normalizeTaskImages(&req)
 
 	if strings.TrimSpace(req.Model) == "" {
 		return createTaskError(fmt.Errorf("model field is required"), "missing_model", http.StatusBadRequest, true)
@@ -187,9 +197,16 @@ func isKnownTaskField(field string) bool {
 		"model":           true,
 		"mode":            true,
 		"image":           true,
+		"image_url":       true,
 		"images":          true,
+		"image_urls":      true,
+		"start_image_url": true,
+		"end_image_url":   true,
+		"audio_url":       true,
+		"aspect_ratio":    true,
 		"size":            true,
 		"duration":        true,
+		"seconds":         true,
 		"input_reference": true, // Sora 特有字段
 	}
 	return knownFields[field]
@@ -214,11 +231,23 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 		return taskErr
 	}
 
-	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
-		// 兼容单图上传
-		req.Images = []string{req.Image}
-	}
+	normalizeTaskImages(&req)
 
 	storeTaskRequest(c, info, action, req)
 	return nil
+}
+
+func normalizeTaskImages(req *TaskSubmitReq) {
+	if req == nil {
+		return
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
+		req.Images = []string{req.Image}
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.ImageURL) != "" {
+		req.Images = []string{req.ImageURL}
+	}
+	if len(req.ImageURLs) > 0 {
+		req.Images = append(req.Images, req.ImageURLs...)
+	}
 }

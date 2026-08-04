@@ -119,6 +119,9 @@ export const VIDEO_MODEL_CONFIG = {
   ko3: {
     durations: [4, 8, 12],
   },
+  'minimax-h3': {
+    durations: createDurationRange(5, 15),
+  },
 };
 
 const VIDEO_MODELS = new Set(Object.keys(VIDEO_MODEL_CONFIG));

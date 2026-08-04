@@ -12,6 +12,13 @@ type VideoRequest struct {
 	FastPretreatment *bool              `json:"fast_pretreatment,omitempty"`
 	Duration         *int               `json:"duration,omitempty"`
 	Resolution       string             `json:"resolution,omitempty"`
+	Width            int                `json:"width,omitempty"`
+	Height           int                `json:"height,omitempty"`
+	ImageURL         string             `json:"image_url,omitempty"`
+	ImageURLs        []string           `json:"image_urls,omitempty"`
+	StartImageURL    string             `json:"start_image_url,omitempty"`
+	EndImageURL      string             `json:"end_image_url,omitempty"`
+	AudioURL         string             `json:"audio_url,omitempty"`
 	CallbackURL      string             `json:"callback_url,omitempty"`
 	AigcWatermark    *bool              `json:"aigc_watermark,omitempty"`
 	FirstFrameImage  string             `json:"first_frame_image,omitempty"` // For image-to-video and start-end-to-video
@@ -151,6 +158,14 @@ func GetModelConfig(model string) ModelConfig {
 			SupportedDurations:   []int{6},
 			SupportedResolutions: []string{Resolution720P},
 			HasPromptOptimizer:   true,
+			HasFastPretreatment:  false,
+		},
+		ModelMiniMaxH3: {
+			Name:                 ModelMiniMaxH3,
+			DefaultResolution:    Resolution2K,
+			SupportedDurations:   []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			SupportedResolutions: []string{Resolution2K},
+			HasPromptOptimizer:   false,
 			HasFastPretreatment:  false,
 		},
 	}

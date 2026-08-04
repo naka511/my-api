@@ -143,6 +143,10 @@ func (a *TaskAdaptor) GetChannelName() string {
 }
 
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*VideoRequest, error) {
+	if isMiniMaxH3Model(info.UpstreamModelName) || isMiniMaxH3Model(req.Model) {
+		return a.convertToMiniMaxH3RequestPayload(req, info)
+	}
+
 	modelConfig := GetModelConfig(info.UpstreamModelName)
 	duration := DefaultDuration
 	if req.Duration > 0 {
@@ -164,6 +168,129 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	}
 
 	return videoRequest, nil
+}
+
+func (a *TaskAdaptor) convertToMiniMaxH3RequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*VideoRequest, error) {
+	duration := resolveMiniMaxH3Duration(req)
+	if duration < 5 || duration > 15 {
+		return nil, fmt.Errorf("duration must be between 5 and 15 seconds")
+	}
+
+	width, height, err := resolveMiniMaxH3Size(req.Size, req.AspectRatio)
+	if err != nil {
+		return nil, err
+	}
+
+	imageURLs := compactNonEmpty(req.Images)
+	if len(imageURLs) > 5 {
+		return nil, fmt.Errorf("image_urls supports at most 5 images")
+	}
+
+	hasStartEndFrame := strings.TrimSpace(req.StartImageURL) != "" || strings.TrimSpace(req.EndImageURL) != ""
+	if hasStartEndFrame {
+		if len(imageURLs) > 0 {
+			return nil, fmt.Errorf("start/end frame mode cannot be mixed with image reference mode")
+		}
+		if strings.TrimSpace(req.AudioURL) != "" {
+			return nil, fmt.Errorf("start/end frame mode does not support audio_url")
+		}
+	}
+	if strings.TrimSpace(req.AudioURL) != "" && len(imageURLs) == 0 {
+		return nil, fmt.Errorf("audio_url requires at least one image reference")
+	}
+
+	videoRequest := &VideoRequest{
+		Model:         ModelMiniMaxH3,
+		Prompt:        req.Prompt,
+		Duration:      &duration,
+		Width:         width,
+		Height:        height,
+		StartImageURL: strings.TrimSpace(req.StartImageURL),
+		EndImageURL:   strings.TrimSpace(req.EndImageURL),
+		AudioURL:      strings.TrimSpace(req.AudioURL),
+	}
+	if len(imageURLs) == 1 {
+		videoRequest.ImageURL = imageURLs[0]
+	} else if len(imageURLs) > 1 {
+		videoRequest.ImageURLs = imageURLs
+	}
+	if err := req.UnmarshalMetadata(&videoRequest); err != nil {
+		return nil, errors.Wrap(err, "unmarshal metadata to minimax-h3 request failed")
+	}
+
+	return videoRequest, nil
+}
+
+func resolveMiniMaxH3Duration(req *relaycommon.TaskSubmitReq) int {
+	if req.Duration > 0 {
+		return req.Duration
+	}
+	if req.Seconds != "" {
+		if seconds, err := strconv.Atoi(req.Seconds); err == nil && seconds > 0 {
+			return seconds
+		}
+	}
+	return 5
+}
+
+func resolveMiniMaxH3Size(size string, aspectRatio string) (int, int, error) {
+	if strings.TrimSpace(size) != "" {
+		width, height, err := parseMiniMaxH3Size(size)
+		if err != nil {
+			return 0, 0, err
+		}
+		return width, height, nil
+	}
+
+	switch strings.TrimSpace(aspectRatio) {
+	case "", "16:9":
+		return 2560, 1440, nil
+	case "9:16":
+		return 1440, 2560, nil
+	case "1:1":
+		return 1440, 1440, nil
+	case "4:3":
+		return 1920, 1440, nil
+	case "3:4":
+		return 1440, 1920, nil
+	case "21:9":
+		return 3360, 1440, nil
+	default:
+		return 0, 0, fmt.Errorf("aspect_ratio is invalid")
+	}
+}
+
+func parseMiniMaxH3Size(size string) (int, int, error) {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	normalized = strings.ReplaceAll(normalized, "×", "x")
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("size must be widthxheight")
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || width <= 0 {
+		return 0, 0, fmt.Errorf("size width is invalid")
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || height <= 0 {
+		return 0, 0, fmt.Errorf("size height is invalid")
+	}
+	return width, height, nil
+}
+
+func compactNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func isMiniMaxH3Model(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), ModelMiniMaxH3)
 }
 
 func (a *TaskAdaptor) parseResolutionFromSize(size string, modelConfig ModelConfig) string {
