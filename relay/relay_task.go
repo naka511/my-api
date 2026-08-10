@@ -191,12 +191,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
 	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
-		info.PriceData.OtherRatios = adjustedRatios
 		if shouldApplyTaskOtherRatios(info, modelName) {
 			// 基于调整后的 ratios 重新计算 quota
-			finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
+			finalQuota = recalcQuotaFromRatios(info, modelName, adjustedRatios)
 			info.PriceData.Quota = finalQuota
 		}
+		info.PriceData.OtherRatios = adjustedRatios
 	}
 
 	return &TaskSubmitResult{
@@ -262,14 +262,11 @@ func PrepareTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmit
 		}
 	}
 
-	// 6. 将 OtherRatios 应用到基础额度。
-	// fixed_price 是显式固定收费模式，seconds/size 等参数仅用于日志展示。
+	// 6. 将适用于当前计费模式的 OtherRatios 应用到基础额度。
+	// per_second 只使用 seconds/duration；fixed_price 不使用任何请求倍率。
 	if shouldApplyTaskOtherRatios(info, modelName) {
-		for _, ra := range info.PriceData.OtherRatios {
-			if ra != 1.0 {
-				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
-			}
-		}
+		multiplier := taskOtherRatiosMultiplier(info, modelName, info.PriceData.OtherRatios)
+		info.PriceData.Quota = int(float64(info.PriceData.Quota) * multiplier)
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
@@ -293,7 +290,11 @@ func shouldApplyTaskOtherRatios(info *relaycommon.RelayInfo, modelName string) b
 	if info != nil && strings.TrimSpace(info.OriginModelName) != "" {
 		modelName = info.OriginModelName
 	}
-	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeFixedPrice {
+	billingMode := billing_setting.GetBillingMode(modelName)
+	if billingMode == billing_setting.BillingModePerSecond {
+		return true
+	}
+	if billingMode == billing_setting.BillingModeFixedPrice {
 		return false
 	}
 	if info != nil && info.PriceData.UsePrice {
@@ -302,25 +303,47 @@ func shouldApplyTaskOtherRatios(info *relaycommon.RelayInfo, modelName string) b
 	return true
 }
 
+func taskOtherRatiosMultiplier(info *relaycommon.RelayInfo, modelName string, ratios map[string]float64) float64 {
+	if info != nil && strings.TrimSpace(info.OriginModelName) != "" {
+		modelName = info.OriginModelName
+	}
+
+	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond {
+		for _, key := range []string{"seconds", "duration"} {
+			if value := ratios[key]; value > 0 {
+				return value
+			}
+		}
+		return 1
+	}
+
+	result := 1.0
+	for _, ratio := range ratios {
+		if ratio != 1.0 {
+			result *= ratio
+		}
+	}
+	return result
+}
+
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
-// 公式: baseQuota × ∏(ratio) — 其中 baseQuota 是不含 OtherRatios 的基础额度。
-func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float64) int {
+// 公式由计费模式决定：按秒只乘时长；按量继续应用适配器提供的全部倍率。
+func recalcQuotaFromRatios(info *relaycommon.RelayInfo, modelName string, ratios map[string]float64) int {
+	if info != nil && strings.TrimSpace(info.OriginModelName) != "" {
+		modelName = info.OriginModelName
+	}
+	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond && info.PriceData.UsePrice {
+		baseQuota := info.PriceData.ModelPrice * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio
+		return int(baseQuota * taskOtherRatiosMultiplier(info, modelName, ratios))
+	}
+
 	// 从 PriceData 获取不含 OtherRatios 的基础价格
-	baseQuota := info.PriceData.Quota
-	// 先除掉原有的 OtherRatios 恢复基础额度
-	for _, ra := range info.PriceData.OtherRatios {
-		if ra != 1.0 && ra > 0 {
-			baseQuota = int(float64(baseQuota) / ra)
-		}
+	baseQuota := float64(info.PriceData.Quota)
+	currentMultiplier := taskOtherRatiosMultiplier(info, modelName, info.PriceData.OtherRatios)
+	if currentMultiplier > 0 {
+		baseQuota /= currentMultiplier
 	}
-	// 应用新的 ratios
-	result := float64(baseQuota)
-	for _, ra := range ratios {
-		if ra != 1.0 {
-			result *= ra
-		}
-	}
-	return int(result)
+	return int(baseQuota * taskOtherRatiosMultiplier(info, modelName, ratios))
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){

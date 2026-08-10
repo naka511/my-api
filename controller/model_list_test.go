@@ -160,6 +160,8 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 		"zz-tiered-visible-model":      "tiered_expr",
 		"zz-tiered-empty-expr-model":   "tiered_expr",
 		"zz-tiered-missing-expr-model": "tiered_expr",
+		"zz-per-second-model":          "per_second",
+		"zz-fixed-price-model":         "fixed_price",
 	}, map[string]string{
 		"zz-tiered-visible-model":    `tier("base", p * 1 + c * 2)`,
 		"zz-tiered-empty-expr-model": "   ",
@@ -177,6 +179,8 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 		{Group: "default", Model: "zz-tiered-visible-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-per-second-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-fixed-price-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-unpriced-model", ChannelId: 1, Enabled: true},
 	}).Error)
 
@@ -208,6 +212,14 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, missingExprPricing.BillingMode)
 	require.Empty(t, missingExprPricing.BillingExpr)
+
+	perSecondPricing, ok := pricingByName["zz-per-second-model"]
+	require.True(t, ok)
+	require.Equal(t, "per_second", perSecondPricing.BillingMode)
+
+	fixedPricePricing, ok := pricingByName["zz-fixed-price-model"]
+	require.True(t, ok)
+	require.Equal(t, "fixed_price", fixedPricePricing.BillingMode)
 }
 
 func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {

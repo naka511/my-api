@@ -163,9 +163,10 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	return priceData, nil
 }
 
-// ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
+// ModelPriceHelperPerCall 固定价格/按秒/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
+	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success
@@ -177,6 +178,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 			modelPrice = defaultPrice
 			usePrice = true
 		} else {
+			if billingMode == billing_setting.BillingModePerSecond {
+				return types.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
+			}
 			var ratioSuccess bool
 			var matchName string
 			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)

@@ -20,10 +20,16 @@ import (
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
+	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
 	// fixed_price 是明确的固定收费模式，不参与 seconds / duration 等参数倍率。
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeFixedPrice {
+	if billingMode == billing_setting.BillingModePerSecond {
+		logContent = fmt.Sprintf("%s，按秒收费", logContent)
+	} else if billingMode == billing_setting.BillingModeFixedPrice {
 		logContent = fmt.Sprintf("%s，固定收费", logContent)
-	} else if info.PriceData.UsePrice || common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	} else if info.PriceData.UsePrice {
+		// 兼容旧 ModelPrice 配置：未显式保存 billing_mode 时仍按固定收费处理。
+		logContent = fmt.Sprintf("%s，固定收费", logContent)
+	} else if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		if len(info.PriceData.OtherRatios) > 0 {
@@ -44,7 +50,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["task_id"] = info.PublicTaskID
 	}
 	other["request_path"] = c.Request.URL.Path
+	other["billing_mode"] = billingMode
 	other["model_price"] = info.PriceData.ModelPrice
+	for key, value := range info.PriceData.OtherRatios {
+		other[key] = value
+	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
@@ -152,6 +162,9 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
 	if bc := task.PrivateData.BillingContext; bc != nil {
+		if bc.BillingMode != "" {
+			other["billing_mode"] = bc.BillingMode
+		}
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio

@@ -54,6 +54,48 @@ func TestShouldApplyTaskOtherRatiosSkipsFixedPriceMode(t *testing.T) {
 	require.False(t, shouldApplyTaskOtherRatios(info, "video-2.0-fast"))
 }
 
+func TestPerSecondBillingUsesOnlyDuration(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"video-2.5":"per_second"}`,
+	}))
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "video-2.5",
+		PriceData: types.PriceData{
+			UsePrice:  true,
+			ModelPrice: 1.5,
+			Quota:      int(1.5 * common.QuotaPerUnit * 8),
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+			OtherRatios: map[string]float64{
+				"seconds": 8,
+				"size":    1.666667,
+			},
+		},
+	}
+
+	require.True(t, shouldApplyTaskOtherRatios(info, "video-2.5"))
+	require.Equal(t, 8.0, taskOtherRatiosMultiplier(info, "video-2.5", info.PriceData.OtherRatios))
+	require.Equal(
+		t,
+		int(1.5*common.QuotaPerUnit*12),
+		recalcQuotaFromRatios(info, "video-2.5", map[string]float64{
+			"duration": 12,
+			"size":     2,
+		}),
+	)
+}
+
 func TestBuildVideo2AsyncTaskResponseHidesInternalFields(t *testing.T) {
 	task := &model.Task{
 		ID:         123,

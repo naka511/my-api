@@ -1774,7 +1774,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Pour les déploiements privés, format : https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Imposer une réponse JSON syntaxiquement valide",
@@ -4521,6 +4521,13 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Per-second": "Par seconde",
+    "Price per second": "Prix par seconde",
+    "Price per second is required.": "Le prix par seconde est obligatoire.",
+    "per second": "par seconde",
+    "second": "seconde",
+    "Multiplied by request duration": "Multiplié par la durée de la requête",
+    "Final cost equals price per second multiplied by seconds or duration and the group multiplier.": "Le coût final est le prix par seconde multiplié par seconds ou duration, puis par le multiplicateur du groupe."
   }
 }

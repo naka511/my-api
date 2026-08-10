@@ -123,6 +123,17 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
 
 const buildModelState = (name, sourceMaps) => {
   const billingMode = sourceMaps.ModelBillingMode?.[name];
+  if (billingMode === 'per_second') {
+    const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+    return {
+      ...EMPTY_MODEL,
+      name,
+      billingMode: 'per-second',
+      fixedPrice,
+      rawRatios: { ...EMPTY_MODEL.rawRatios },
+      hasConflict: false,
+    };
+  }
   if (billingMode === 'fixed_price') {
     const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
     return {
@@ -172,7 +183,7 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode: hasValue(fixedPrice) ? 'fixed-price' : 'per-token',
     fixedPrice,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
@@ -236,7 +247,8 @@ const buildModelState = (name, sourceMaps) => {
 
 export const isBasePricingUnset = (model) =>
   model.billingMode !== 'tiered_expr' &&
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.inputPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -258,7 +270,7 @@ export const getModelWarnings = (model, t) => {
 
   if (model.hasConflict) {
     warnings.push(
-      t('当前模型同时存在按次价格和倍率配置，保存时会按当前计费方式覆盖。'),
+      t('当前模型同时存在固定价格和倍率配置，保存时会按当前计费方式覆盖。'),
     );
   }
 
@@ -302,8 +314,8 @@ export const getModelWarnings = (model, t) => {
 export const buildSummaryText = (model, t) => {
   const requestRuleSuffix =
     model.billingMode === 'tiered_expr' && model.requestRuleExpr
-    ? `，${t('请求规则')}`
-    : '';
+      ? `，${t('请求规则')}`
+      : '';
   if (model.billingMode === 'tiered_expr') {
     const expr = model.billingExpr;
     if (!expr) return `${t('表达式计费')}${requestRuleSuffix}`;
@@ -315,14 +327,14 @@ export const buildSummaryText = (model, t) => {
   }
 
   if (
-    (model.billingMode === 'per-request' ||
+    (model.billingMode === 'per-second' ||
       model.billingMode === 'fixed-price') &&
     hasValue(model.fixedPrice)
   ) {
     if (model.billingMode === 'fixed-price') {
       return `${t('固定收费')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
     }
-    return `${t('按次')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
+    return `${t('按秒收费')} $${model.fixedPrice} / ${t('秒')}${requestRuleSuffix}`;
   }
 
   if (hasValue(model.inputPrice)) {
@@ -364,7 +376,10 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request' || model.billingMode === 'fixed-price') {
+  if (
+    model.billingMode === 'per-second' ||
+    model.billingMode === 'fixed-price'
+  ) {
     if (hasValue(model.fixedPrice)) {
       result.ModelPrice = toNormalizedNumber(model.fixedPrice);
     }
@@ -505,7 +520,10 @@ export const buildPreviewRows = (model, t) => {
     return rows;
   }
 
-  if (model.billingMode === 'per-request' || model.billingMode === 'fixed-price') {
+  if (
+    model.billingMode === 'per-second' ||
+    model.billingMode === 'fixed-price'
+  ) {
     const rows = [
       {
         key: 'ModelPrice',
@@ -513,7 +531,13 @@ export const buildPreviewRows = (model, t) => {
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
       },
     ];
-    if (model.billingMode === 'fixed-price') {
+    if (model.billingMode === 'per-second') {
+      rows.unshift({
+        key: 'BillingMode',
+        label: 'ModelBillingMode',
+        value: 'per_second',
+      });
+    } else if (model.billingMode === 'fixed-price') {
       rows.unshift({
         key: 'BillingMode',
         label: 'ModelBillingMode',
@@ -671,8 +695,12 @@ export function useModelPricingEditorState({
       ImageRatio: parseOptionJSON(options.ImageRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
-      ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
+      ModelBillingMode: parseOptionJSON(
+        options['billing_setting.billing_mode'],
+      ),
+      ModelBillingExpr: parseOptionJSON(
+        options['billing_setting.billing_expr'],
+      ),
     };
 
     const names = new Set([
@@ -1046,6 +1074,19 @@ export function useModelPricingEditorState({
   };
 
   const handleSubmit = async () => {
+    const invalidPerSecondModel = models.find(
+      (model) =>
+        model.billingMode === 'per-second' && !hasValue(model.fixedPrice),
+    );
+    if (invalidPerSecondModel) {
+      showError(
+        t('模型 {{name}} 使用按秒收费时必须填写每秒价格', {
+          name: invalidPerSecondModel.name,
+        }),
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const output = {
@@ -1071,9 +1112,14 @@ export function useModelPricingEditorState({
             model.requestRuleExpr,
           );
           if (finalBillingExpr) {
-            tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
-            tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            tieredOutput['billing_setting.billing_mode'][model.name] =
+              'tiered_expr';
+            tieredOutput['billing_setting.billing_expr'][model.name] =
+              finalBillingExpr;
           }
+        } else if (model.billingMode === 'per-second') {
+          tieredOutput['billing_setting.billing_mode'][model.name] =
+            'per_second';
         } else if (model.billingMode === 'fixed-price') {
           tieredOutput['billing_setting.billing_mode'][model.name] =
             'fixed_price';

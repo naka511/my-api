@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -98,6 +99,7 @@ func RelayTaskLocalQueue(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool 
 		ModelRatio:      relayInfo.PriceData.ModelRatio,
 		OtherRatios:     relayInfo.PriceData.OtherRatios,
 		OriginModelName: relayInfo.OriginModelName,
+		BillingMode:     billing_setting.GetBillingMode(relayInfo.OriginModelName),
 		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 	}
 	task.Quota = prepared.Quota

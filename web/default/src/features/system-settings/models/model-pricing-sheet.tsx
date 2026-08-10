@@ -90,7 +90,7 @@ type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-type PricingMode = 'per-token' | 'per-request' | 'fixed-price' | 'tiered_expr'
+type PricingMode = 'per-token' | 'per-second' | 'fixed-price' | 'tiered_expr'
 type LaneKey =
   | 'completion'
   | 'cache'
@@ -274,7 +274,7 @@ function createInitialLaneState(data?: ModelRatioData | null) {
 }
 
 function getModeLabel(mode: PricingMode) {
-  if (mode === 'per-request') return 'Per-request'
+  if (mode === 'per-second') return 'Per-second'
   if (mode === 'fixed-price') return 'Fixed'
   if (mode === 'tiered_expr') return 'Expression'
   return 'Per-token'
@@ -283,7 +283,7 @@ function getModeLabel(mode: PricingMode) {
 function getModeBadgeVariant(
   mode: PricingMode
 ): 'default' | 'secondary' | 'outline' {
-  if (mode === 'per-request') return 'secondary'
+  if (mode === 'per-second') return 'secondary'
   if (mode === 'fixed-price') return 'secondary'
   if (mode === 'tiered_expr') return 'default'
   return 'outline'
@@ -312,7 +312,7 @@ function buildPreviewRows(
     ]
   }
 
-  if (mode === 'per-request' || mode === 'fixed-price') {
+  if (mode === 'per-second' || mode === 'fixed-price') {
     const rows: PreviewRow[] = [
       {
         key: 'price',
@@ -320,7 +320,13 @@ function buildPreviewRows(
         value: values.price || t('Empty'),
       },
     ]
-    if (mode === 'fixed-price') {
+    if (mode === 'per-second') {
+      rows.unshift({
+        key: 'mode',
+        label: 'BillingMode',
+        value: 'per_second',
+      })
+    } else if (mode === 'fixed-price') {
       rows.unshift({
         key: 'mode',
         label: 'BillingMode',
@@ -477,10 +483,11 @@ export function ModelPricingEditorPanel({
       })
       setPricingMode(
         editData.billingMode === 'tiered_expr' ||
+          editData.billingMode === 'per-second' ||
           editData.billingMode === 'fixed-price'
           ? editData.billingMode
           : editData.price
-            ? 'per-request'
+            ? 'fixed-price'
             : 'per-token'
       )
       setBillingExpr(editData.billingExpr || '')
@@ -699,6 +706,13 @@ export function ModelPricingEditorPanel({
   }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const handleSubmit = (values: ModelPricingFormValues) => {
+    if (pricingMode === 'per-second' && toNumberOrNull(values.price) === null) {
+      form.setError('price', {
+        message: t('Price per second is required.'),
+      })
+      return
+    }
+
     if (
       pricingMode === 'per-token' &&
       toNumberOrNull(promptPrice) === null &&
@@ -816,8 +830,8 @@ export function ModelPricingEditorPanel({
               <Tabs value={pricingMode} onValueChange={handleModeChange}>
                 <TabsList className='grid w-full grid-cols-4'>
                   <TabsTrigger value='per-token'>{t('Per-token')}</TabsTrigger>
-                  <TabsTrigger value='per-request'>
-                    {t('Per-request')}
+                  <TabsTrigger value='per-second'>
+                    {t('Per-second')}
                   </TabsTrigger>
                   <TabsTrigger value='fixed-price'>{t('Fixed')}</TabsTrigger>
                   <TabsTrigger value='tiered_expr'>
@@ -867,16 +881,13 @@ export function ModelPricingEditorPanel({
                   </FieldGroup>
                 </TabsContent>
 
-                <TabsContent
-                  value='per-request'
-                  className='flex flex-col gap-5'
-                >
+                <TabsContent value='per-second' className='flex flex-col gap-5'>
                   <FormField
                     control={form.control}
                     name='price'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Fixed price')}</FormLabel>
+                        <FormLabel>{t('Price per second')}</FormLabel>
                         <FormControl>
                           <InputGroup>
                             <InputGroupAddon>$</InputGroupAddon>
@@ -892,13 +903,13 @@ export function ModelPricingEditorPanel({
                               }}
                             />
                             <InputGroupAddon align='inline-end'>
-                              {t('per request')}
+                              {t('per second')}
                             </InputGroupAddon>
                           </InputGroup>
                         </FormControl>
                         <FormDescription>
                           {t(
-                            'Cost in USD per request, regardless of tokens used.'
+                            'Final cost equals price per second multiplied by seconds or duration and the group multiplier.'
                           )}
                         </FormDescription>
                         <FormMessage />

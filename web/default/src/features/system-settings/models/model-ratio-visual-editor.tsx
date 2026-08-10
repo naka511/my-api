@@ -123,14 +123,14 @@ const filterBySelectedValues = (
 }
 
 const getModeLabel = (mode?: string) => {
-  if (mode === 'per-request') return 'Per-request'
+  if (mode === 'per-second') return 'Per-second'
   if (mode === 'fixed-price') return 'Fixed'
   if (mode === 'tiered_expr') return 'Expression'
   return 'Per-token'
 }
 
 const getModeVariant = (mode?: string): 'warning' | 'info' | 'success' => {
-  if (mode === 'per-request') return 'warning'
+  if (mode === 'per-second') return 'warning'
   if (mode === 'fixed-price') return 'success'
   if (mode === 'tiered_expr') return 'info'
   return 'success'
@@ -153,8 +153,8 @@ const getPriceSummary = (row: ModelRow, t: (key: string) => string) => {
       ? `${t('Fixed')} $${row.price} / ${t('request')}`
       : t('Unset price')
   }
-  if (row.billingMode === 'per-request') {
-    return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
+  if (row.billingMode === 'per-second') {
+    return row.price ? `$${row.price} / ${t('second')}` : t('Unset price')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -183,8 +183,8 @@ const getPriceDetail = (row: ModelRow, t: (key: string) => string) => {
   if (row.billingMode === 'fixed-price') {
     return t('Ignores request multipliers')
   }
-  if (row.billingMode === 'per-request') {
-    return t('Fixed request price')
+  if (row.billingMode === 'per-second') {
+    return t('Multiplied by request duration')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -340,6 +340,21 @@ export const ModelRatioVisualEditor = memo(
         const audioCompletion = audioCompletionMap[name]?.toString() || ''
 
         const modeForModel = billingModeMap[name]
+        if (modeForModel === 'per_second') {
+          return {
+            name,
+            price,
+            ratio,
+            cacheRatio: cache,
+            createCacheRatio: createCache,
+            completionRatio: completion,
+            imageRatio: image,
+            audioRatio: audio,
+            audioCompletionRatio: audioCompletion,
+            billingMode: 'per-second',
+            hasConflict: false,
+          }
+        }
         if (modeForModel === 'fixed_price') {
           return {
             name,
@@ -389,7 +404,7 @@ export const ModelRatioVisualEditor = memo(
           imageRatio: image,
           audioRatio: audio,
           audioCompletionRatio: audioCompletion,
-          billingMode: price !== '' ? 'per-request' : 'per-token',
+          billingMode: price !== '' ? 'fixed-price' : 'per-token',
           hasConflict:
             price !== '' &&
             (ratio !== '' ||
@@ -421,7 +436,7 @@ export const ModelRatioVisualEditor = memo(
         models.reduce(
           (acc, model) => {
             const mode =
-              model.billingMode === 'per-request' ||
+              model.billingMode === 'per-second' ||
               model.billingMode === 'fixed-price' ||
               model.billingMode === 'tiered_expr'
                 ? model.billingMode
@@ -431,11 +446,11 @@ export const ModelRatioVisualEditor = memo(
           },
           {
             'per-token': 0,
-            'per-request': 0,
+            'per-second': 0,
             'fixed-price': 0,
             tiered_expr: 0,
           } as Record<
-            'per-token' | 'per-request' | 'fixed-price' | 'tiered_expr',
+            'per-token' | 'per-second' | 'fixed-price' | 'tiered_expr',
             number
           >
         ),
@@ -456,10 +471,11 @@ export const ModelRatioVisualEditor = memo(
           audioCompletionRatio: model.audioCompletionRatio,
           billingMode:
             model.billingMode === 'tiered_expr' ||
-              model.billingMode === 'fixed-price'
+            model.billingMode === 'per-second' ||
+            model.billingMode === 'fixed-price'
               ? model.billingMode
               : model.price && model.price !== ''
-                ? 'per-request'
+                ? 'fixed-price'
                 : 'per-token',
           billingExpr: model.billingExpr,
           requestRuleExpr: model.requestRuleExpr,
@@ -819,6 +835,9 @@ export const ModelRatioVisualEditor = memo(
             setIfPresent(imageMap, name, data.imageRatio)
             setIfPresent(audioMap, name, data.audioRatio)
             setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
+          } else if (data.billingMode === 'per-second') {
+            billingModeMap[name] = 'per_second'
+            setIfPresent(priceMap, name, data.price)
           } else if (data.billingMode === 'fixed-price') {
             billingModeMap[name] = 'fixed_price'
             setIfPresent(priceMap, name, data.price)
@@ -924,22 +943,22 @@ export const ModelRatioVisualEditor = memo(
                   title: t('Mode'),
                   options: [
                     {
-                      label: 'Per-token',
+                      label: t('Per-token'),
                       value: 'per-token',
                       count: modeCounts['per-token'],
                     },
                     {
-                      label: 'Per-request',
-                      value: 'per-request',
-                      count: modeCounts['per-request'],
+                      label: t('Per-second'),
+                      value: 'per-second',
+                      count: modeCounts['per-second'],
                     },
                     {
-                      label: 'Fixed',
+                      label: t('Fixed'),
                       value: 'fixed-price',
                       count: modeCounts['fixed-price'],
                     },
                     {
-                      label: 'Expression',
+                      label: t('Expression'),
                       value: 'tiered_expr',
                       count: modeCounts.tiered_expr,
                     },
