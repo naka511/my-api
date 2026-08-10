@@ -142,7 +142,8 @@ function BillingBreakdown(props: {
 }) {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
-  const isPerCall = isPerCallBilling(other.model_price)
+  const isPerSecond = other.billing_mode === 'per_second'
+  const isPerCall = !isPerSecond && isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
@@ -151,6 +152,14 @@ function BillingBreakdown(props: {
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
+  const userGR = other.user_group_ratio
+  const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
+  const effectiveGR = isUserGR ? userGR : other.group_ratio
+  const billingGroupRatio =
+    effectiveGR != null && Number.isFinite(effectiveGR) ? effectiveGR : 1
+  const billingSeconds = [other.seconds, other.duration]
+    .map(Number)
+    .find((value) => Number.isFinite(value) && value > 0)
 
   if (isTieredExpr) {
     rows.push({
@@ -174,6 +183,19 @@ function BillingBreakdown(props: {
       rows.push({
         label: t('Matched Tier'),
         value: t('No matching results'),
+      })
+    }
+  } else if (isPerSecond) {
+    rows.push({ label: t('Billing Mode'), value: t('Per-second') })
+    if (other.model_price != null) {
+      const pricePerSecond = `${fmtPrice(other.model_price)}/${t('seconds')}`
+      const formula =
+        billingSeconds != null
+          ? `${pricePerSecond} × ${billingSeconds} ${t('seconds')}${effectiveGR != null && Number.isFinite(effectiveGR) ? ` × ${isUserGR ? t('User Exclusive Ratio') : t('Group Ratio')} ${formatRatio(effectiveGR)}` : ''} = ${fmtPrice(other.model_price * billingSeconds * billingGroupRatio)}`
+          : pricePerSecond
+      rows.push({
+        label: t('Model Price'),
+        value: formula,
       })
     }
   } else if (isPerCall) {
@@ -200,9 +222,6 @@ function BillingBreakdown(props: {
     }
   }
 
-  const userGR = other.user_group_ratio
-  const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
-  const effectiveGR = isUserGR ? userGR : other.group_ratio
   if (effectiveGR != null && Number.isFinite(effectiveGR)) {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),

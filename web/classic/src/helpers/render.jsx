@@ -1645,6 +1645,9 @@ export function renderModelPrice(opts) {
     completion_tokens: completionTokens = 0,
     model_ratio: modelRatio = 0,
     model_price: modelPrice = -1,
+    billing_mode: billingMode,
+    seconds,
+    duration,
     completion_ratio: _completionRatio,
     group_ratio: _groupRatio,
     user_group_ratio,
@@ -1674,6 +1677,33 @@ export function renderModelPrice(opts) {
   const completionRatio = _completionRatio ?? 0;
 
   const { symbol, rate } = getCurrencyConfig();
+
+  if (billingMode === 'per_second' && modelPrice !== -1) {
+    const billingSeconds = [seconds, duration]
+        .map(Number)
+        .find((value) => Number.isFinite(value) && value > 0);
+    const billingGroupRatio = Number.isFinite(Number(groupRatio))
+        ? Number(groupRatio)
+        : 1;
+    const displayPrice = formatBillingDisplayPrice(modelPrice, rate);
+    const pricePerSecond = `${i18next.t('模型价格')} ${symbol}${displayPrice} / ${i18next.t('秒')}`;
+
+    if (billingSeconds == null) {
+      return renderBillingArticle([pricePerSecond]);
+    }
+
+    const displaySeconds = formatRatioValue(billingSeconds);
+    const displayTotal = formatBillingDisplayPrice(
+        modelPrice * billingSeconds * billingGroupRatio,
+        rate,
+    );
+    const groupRatioPart = Number.isFinite(Number(groupRatio))
+        ? ` × ${ratioLabel} ${billingGroupRatio}`
+        : '';
+    return renderBillingArticle([
+      `${pricePerSecond} × ${displaySeconds} ${i18next.t('秒')}${groupRatioPart} = ${symbol}${displayTotal}`,
+    ]);
+  }
 
   if (!shouldUseRatioBillingProcess(modelPrice)) {
     if (modelPrice !== -1) {

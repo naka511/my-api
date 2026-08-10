@@ -163,7 +163,7 @@ const PricingCardView = ({
     if (record.quota_type === 1) {
       billingTag = (
         <Tag key='billing' shape='circle' color='teal' size='small'>
-          {t('按次计费')}
+          {record.billing_mode === 'per_second' ? t('按秒收费') : t('固定收费')}
         </Tag>
       );
     } else if (record.quota_type === 0) {
@@ -268,11 +268,13 @@ const PricingCardView = ({
                         {model.model_name}
                       </h3>
                       <div className='flex flex-col gap-1 text-xs mt-1'>
-                        {priceData.isDynamicPricing ? (
-                          formatDynamicPriceSummary(priceData.billingExpr, t, priceData.usedGroupRatio)
-                        ) : (
-                          formatPriceInfo(priceData, t, siteDisplayType)
-                        )}
+                        {priceData.isDynamicPricing
+                          ? formatDynamicPriceSummary(
+                              priceData.billingExpr,
+                              t,
+                              priceData.usedGroupRatio,
+                            )
+                          : formatPriceInfo(priceData, t, siteDisplayType)}
                       </div>
                     </div>
                   </div>

@@ -52,6 +52,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const usdExchangeRate = props.usdExchangeRate ?? 1
   const showRechargePrice = props.showRechargePrice ?? false
   const isTokenBased = isTokenBasedModel(props.model)
+  const isPerSecond = props.model.billing_mode === 'per_second'
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
   const groups = props.model.enable_groups || []
@@ -194,7 +195,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                       usdExchangeRate
                     )}
                   </span>{' '}
-                  / {t('request')}
+                  / {isPerSecond ? t('second') : t('request')}
                 </span>
               )}
             </div>
@@ -235,7 +236,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </span>
           )}
           <span className='text-muted-foreground text-xs font-medium'>
-            {isTokenBased ? t('Token-based') : t('Per Request')}
+            {isTokenBased
+              ? t('Token-based')
+              : isPerSecond
+                ? t('Per-second')
+                : t('Per Request')}
           </span>
           {isDynamicPricing && (
             <StatusBadge
