@@ -1306,6 +1306,9 @@ function renderBillingArticle(lines, { showReferenceNote = true } = {}) {
 function renderPriceSimpleCore({
                                  modelRatio,
                                  modelPrice = -1,
+                                 billingMode,
+                                 seconds,
+                                 duration,
                                  groupRatio,
                                  user_group_ratio,
                                  cacheTokens = 0,
@@ -1349,7 +1352,27 @@ function renderPriceSimpleCore({
       },
     ];
 
-    if (modelPrice !== -1) {
+    if (billingMode === 'per_second' && modelPrice !== -1) {
+      const billingSeconds = [seconds, duration]
+          .map(Number)
+          .find((value) => Number.isFinite(value) && value > 0);
+      const billingGroupRatio = Number.isFinite(Number(finalGroupRatio))
+          ? Number(finalGroupRatio)
+          : 1;
+      const displayPrice = formatCompactDisplayPrice(modelPrice);
+      const pricePerSecond = `${i18next.t('模型价格')} ${displayPrice}/${i18next.t('秒')}`;
+      segments.push({
+        tone: 'secondary',
+        text: pricePerSecond,
+      });
+      if (billingSeconds != null) {
+        const ratioPart = billingGroupRatio === 1 ? '' : ` × ${billingGroupRatio}`;
+        segments.push({
+          tone: 'secondary',
+          text: `${displayPrice} × ${formatRatioValue(billingSeconds)}${i18next.t('秒')}${ratioPart} = ${formatCompactDisplayPrice(modelPrice * billingSeconds * billingGroupRatio)}`,
+        });
+      }
+    } else if (modelPrice !== -1) {
       segments.push({
         tone: 'secondary',
         text: isPriceDisplayMode(displayMode, modelPrice)
@@ -2451,6 +2474,9 @@ export function renderModelPriceSimple(opts) {
   const {
     model_ratio: modelRatio,
     model_price: modelPrice = -1,
+    billing_mode: billingMode,
+    seconds,
+    duration,
     group_ratio: groupRatio,
     user_group_ratio,
     cache_tokens: cacheTokens = 0,
@@ -2471,6 +2497,9 @@ export function renderModelPriceSimple(opts) {
   return renderPriceSimpleCore({
     modelRatio,
     modelPrice,
+    billingMode,
+    seconds,
+    duration,
     groupRatio,
     user_group_ratio,
     cacheTokens,

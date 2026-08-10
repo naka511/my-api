@@ -192,8 +192,36 @@ function buildDetailSegments(
       })
     }
   } else {
-    const isPerCall = isPerCallBilling(other.model_price)
-    if (isPerCall) {
+    const isPerSecond = other.billing_mode === 'per_second'
+    const isPerCall = !isPerSecond && isPerCallBilling(other.model_price)
+    if (isPerSecond && other.model_price != null) {
+      const userGroupRatio = other.user_group_ratio
+      const effectiveGroupRatio =
+        userGroupRatio != null &&
+        Number.isFinite(userGroupRatio) &&
+        userGroupRatio !== -1
+          ? userGroupRatio
+          : other.group_ratio
+      const billingGroupRatio =
+        effectiveGroupRatio != null && Number.isFinite(effectiveGroupRatio)
+          ? effectiveGroupRatio
+          : 1
+      const billingSeconds = [other.seconds, other.duration]
+        .map(Number)
+        .find((value) => Number.isFinite(value) && value > 0)
+      const displayPrice = formatPriceCompact(other.model_price)
+      const pricePerSecond = `${t('Model Price')} ${displayPrice}/${t('seconds')}`
+      segments.push({
+        text: pricePerSecond,
+      })
+      if (billingSeconds != null) {
+        const ratioPart = billingGroupRatio === 1 ? '' : ` × ${billingGroupRatio}`
+        segments.push({
+          text: `${displayPrice} × ${billingSeconds}${t('seconds')}${ratioPart} = ${formatPriceCompact(other.model_price * billingSeconds * billingGroupRatio)}`,
+          muted: true,
+        })
+      }
+    } else if (isPerCall) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
       })
