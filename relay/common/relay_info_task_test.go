@@ -39,6 +39,26 @@ func TestTaskSubmitReqUnmarshalMiniMaxH3Fields(t *testing.T) {
 	require.True(t, req.HasImage())
 }
 
+func TestTaskSubmitReqUnmarshalVideo25MediaReferences(t *testing.T) {
+	var req TaskSubmitReq
+	err := rootcommon.Unmarshal([]byte(`{
+		"model":"video-2.5",
+		"prompt":"结合素材生成视频",
+		"resolution":"720p",
+		"video_url":"https://example.com/a.mp4",
+		"video_reference":[{"url":"https://example.com/b.mp4"}],
+		"audio_url":"https://example.com/a.mp3",
+		"audio_reference":[{"url":"https://example.com/b.mp3"}]
+	}`), &req)
+
+	require.NoError(t, err)
+	require.Equal(t, "720p", req.Resolution)
+	require.Equal(t, "https://example.com/a.mp4", req.VideoURL)
+	require.Equal(t, []TaskMediaReference{{URL: "https://example.com/b.mp4"}}, req.VideoReference)
+	require.Equal(t, "https://example.com/a.mp3", req.AudioURL)
+	require.Equal(t, []TaskMediaReference{{URL: "https://example.com/b.mp3"}}, req.AudioReference)
+}
+
 func TestValidateBasicTaskRequestMultipartMiniMaxH3Fields(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

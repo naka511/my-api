@@ -98,6 +98,12 @@ export const VIDEO_MODEL_CONFIG = {
   'video-2.0-fast': {
     durations: createDurationRange(4, 15),
   },
+  'video-2.5': {
+    durations: createDurationRange(4, 30),
+  },
+  'video-2.5-480p': {
+    durations: createDurationRange(4, 30),
+  },
   sora2: {
     durations: [4, 8, 12],
   },

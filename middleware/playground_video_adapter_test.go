@@ -84,6 +84,21 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 			},
 		},
 		{
+			name:         "video 2.5 480p uses fixed output size",
+			path:         "/pg/video/generations",
+			body:         `{"model":"video-2.5-480p","duration":12,"aspect_ratio":"9:16","resolution":"1080p","size":"1920x1080","messages":[{"role":"user","content":"480p video"}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":        "video-2.5-480p",
+				"prompt":       "480p video",
+				"duration":     float64(12),
+				"seconds":      "12",
+				"aspect_ratio": "9:16",
+				"resolution":   "480p",
+				"size":         "496x864",
+			},
+		},
+		{
 			name:         "video extracts image urls from multimodal user message",
 			path:         "/pg/video/generations",
 			body:         `{"model":"video-2.0","messages":[{"role":"user","content":[{"type":"text","text":"use this reference"},{"type":"image_url","image_url":{"url":"https://example.com/ref.png"}}]}]}`,

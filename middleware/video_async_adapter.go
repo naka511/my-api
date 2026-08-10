@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -73,6 +74,9 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 	if _, ok := body["seconds"]; !ok {
 		if duration, ok := body["duration"]; ok {
 			body["seconds"] = normalizeVideoSeconds(duration, defaultSeconds)
+		} else if isVideo25Model(modelName) {
+			body["seconds"] = defaultSeconds
+			body["duration"] = 4
 		}
 	} else {
 		body["seconds"] = normalizeVideoSeconds(body["seconds"], defaultSeconds)
@@ -88,6 +92,7 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 	if size, ok := body["size"].(string); ok && isMiniMaxH3Model(modelName) {
 		body["size"] = normalizeMiniMaxH3SizeValue(size)
 	}
+	normalizeVideo25AsyncOutput(body, modelName)
 
 	if _, ok := body["input_reference"]; !ok {
 		if imageURL, ok := body["image_url"].(string); ok && strings.TrimSpace(imageURL) != "" {
@@ -98,6 +103,70 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 
 func isMiniMaxH3Model(model string) bool {
 	return strings.EqualFold(strings.TrimSpace(model), "minimax-h3")
+}
+
+func isVideo25Model(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "video-2.5", "video-2.5-480p":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeVideo25AsyncOutput(body map[string]any, model string) {
+	if !isVideo25Model(model) {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(model), "video-2.5") {
+		if _, hasResolution := body["resolution"]; !hasResolution {
+			if _, hasSize := body["size"]; !hasSize {
+				body["resolution"] = "720p"
+			}
+		}
+		return
+	}
+
+	aspectRatio, _ := body["aspect_ratio"].(string)
+	aspectRatio = strings.TrimSpace(aspectRatio)
+	if aspectRatio == "" {
+		if size, ok := body["size"].(string); ok {
+			aspectRatio = video25AspectRatioFromSize(size)
+		}
+	}
+	if aspectRatio == "" {
+		aspectRatio = "16:9"
+	}
+	body["aspect_ratio"] = aspectRatio
+	body["resolution"] = "480p"
+	switch aspectRatio {
+	case "9:16":
+		body["size"] = "496x864"
+	case "1:1":
+		body["size"] = "640x640"
+	default:
+		body["size"] = "864x496"
+	}
+}
+
+func video25AspectRatioFromSize(size string) string {
+	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x")))
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	if width == height {
+		return "1:1"
+	}
+	if width > height {
+		return "16:9"
+	}
+	return "9:16"
 }
 
 func defaultVideoSizeForAspectRatio(model string, aspectRatio string) string {

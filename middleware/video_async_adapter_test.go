@@ -46,6 +46,36 @@ func TestNormalizeAsyncVideoRequestForMiniMaxH3(t *testing.T) {
 	require.Equal(t, "2560x1440", body["size"])
 }
 
+func TestNormalizeAsyncVideoRequestForVideo25DefaultsTo720P(t *testing.T) {
+	body := map[string]any{
+		"model":  "video-2.5",
+		"prompt": "test",
+	}
+
+	normalizeAsyncVideoRequest(body)
+
+	require.Equal(t, "4", body["seconds"])
+	require.Equal(t, 4, body["duration"])
+	require.Equal(t, "720p", body["resolution"])
+}
+
+func TestNormalizeAsyncVideoRequestForVideo25480PForcesOutput(t *testing.T) {
+	body := map[string]any{
+		"model":        "video-2.5-480p",
+		"prompt":       "test",
+		"duration":     float64(10),
+		"aspect_ratio": "9:16",
+		"resolution":   "1080p",
+		"size":         "1920x1080",
+	}
+
+	normalizeAsyncVideoRequest(body)
+
+	require.Equal(t, "10", body["seconds"])
+	require.Equal(t, "480p", body["resolution"])
+	require.Equal(t, "496x864", body["size"])
+}
+
 func TestVideoAsyncRequestConvertRewritesPathAndBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

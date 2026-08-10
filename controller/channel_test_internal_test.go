@@ -103,6 +103,18 @@ func TestNormalizeChannelTestEndpointForcesVideoModelsToVideoEndpoint(t *testing
 			endpointType: string(constant.EndpointTypeOpenAI),
 		},
 		{
+			name:         "video 2.5 model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "video-2.5",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
+			name:         "video 2.5 480p model overrides explicit openai endpoint",
+			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
+			modelName:    "video-2.5-480p",
+			endpointType: string(constant.EndpointTypeOpenAI),
+		},
+		{
 			name:         "sora2 model overrides explicit openai endpoint",
 			channel:      &model.Channel{Type: constant.ChannelTypeOpenAI},
 			modelName:    "sora2",

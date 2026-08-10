@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -99,7 +100,91 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if info.Action == constant.TaskActionRemix {
 		return validateRemixRequest(c)
 	}
-	return relaycommon.ValidateMultipartDirect(c, info)
+	if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+		return taskErr
+	}
+
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	modelName := req.Model
+	if upstream := upstreamModelName(info); upstream != "" {
+		modelName = upstream
+	}
+	if isVideo25Model(modelName) {
+		if err := validateVideo25Request(&req); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+	}
+	return nil
+}
+
+func validateVideo25Request(req *relaycommon.TaskSubmitReq) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+	if utf8.RuneCountInString(req.Prompt) > 5000 {
+		return fmt.Errorf("prompt must not exceed 5000 characters")
+	}
+
+	duration := req.Duration
+	if duration == 0 && strings.TrimSpace(req.Seconds) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(req.Seconds))
+		if err != nil {
+			return fmt.Errorf("duration must be an integer between 4 and 30")
+		}
+		duration = parsed
+	}
+	if duration != 0 && (duration < 4 || duration > 30) {
+		return fmt.Errorf("duration must be between 4 and 30 seconds")
+	}
+
+	if aspectRatio := strings.TrimSpace(req.AspectRatio); aspectRatio != "" {
+		switch aspectRatio {
+		case "9:16", "16:9", "1:1":
+		default:
+			return fmt.Errorf("aspect_ratio must be one of 9:16, 16:9, or 1:1")
+		}
+	}
+
+	imageCount := len(req.Images)
+	if strings.TrimSpace(req.StartImageURL) != "" {
+		imageCount++
+	}
+	if strings.TrimSpace(req.EndImageURL) != "" {
+		imageCount++
+	}
+	if imageCount > 30 {
+		return fmt.Errorf("image references support at most 30 images")
+	}
+
+	videoCount := len(req.VideoReference)
+	if strings.TrimSpace(req.VideoURL) != "" {
+		videoCount++
+	}
+	if videoCount > 10 {
+		return fmt.Errorf("video references support at most 10 videos")
+	}
+	for _, reference := range req.VideoReference {
+		if strings.TrimSpace(reference.URL) == "" {
+			return fmt.Errorf("video_reference url must not be empty")
+		}
+	}
+
+	audioCount := len(req.AudioReference)
+	if strings.TrimSpace(req.AudioURL) != "" {
+		audioCount++
+	}
+	if audioCount > 10 {
+		return fmt.Errorf("audio references support at most 10 audio files")
+	}
+	for _, reference := range req.AudioReference {
+		if strings.TrimSpace(reference.URL) == "" {
+			return fmt.Errorf("audio_reference url must not be empty")
+		}
+	}
+	return nil
 }
 
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
@@ -266,6 +351,64 @@ func normalizeLinkSkyAsyncVideoBody(body map[string]interface{}) {
 	if _, ok := body["async"]; !ok {
 		body["async"] = true
 	}
+	normalizeVideo25Output(body)
+}
+
+func normalizeVideo25Output(body map[string]interface{}) {
+	modelName, _ := body["model"].(string)
+	if !isVideo25Model(modelName) {
+		return
+	}
+
+	if strings.EqualFold(strings.TrimSpace(modelName), "video-2.5") {
+		if _, hasResolution := body["resolution"]; !hasResolution {
+			if _, hasSize := body["size"]; !hasSize {
+				body["resolution"] = "720p"
+			}
+		}
+		return
+	}
+
+	aspectRatio, _ := body["aspect_ratio"].(string)
+	aspectRatio = strings.TrimSpace(aspectRatio)
+	if aspectRatio == "" {
+		if size, ok := body["size"].(string); ok {
+			aspectRatio = video25AspectRatioFromSize(size)
+		}
+	}
+	if aspectRatio == "" {
+		aspectRatio = "16:9"
+	}
+	body["aspect_ratio"] = aspectRatio
+	body["resolution"] = "480p"
+	switch aspectRatio {
+	case "9:16":
+		body["size"] = "496x864"
+	case "1:1":
+		body["size"] = "640x640"
+	default:
+		body["size"] = "864x496"
+	}
+}
+
+func video25AspectRatioFromSize(size string) string {
+	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x")))
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	if width == height {
+		return "1:1"
+	}
+	if width > height {
+		return "16:9"
+	}
+	return "9:16"
 }
 
 func linkSkyDurationValue(value interface{}) (int, bool) {
@@ -541,7 +684,16 @@ func upstreamModelName(info *relaycommon.RelayInfo) string {
 
 func isLinkSkyAsyncVideoModel(modelName string) bool {
 	switch strings.ToLower(strings.TrimSpace(modelName)) {
-	case "video-2.0", "video-2.0-fast", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3":
+	case "video-2.0", "video-2.0-fast", "video-2.5", "video-2.5-480p", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3":
+		return true
+	default:
+		return false
+	}
+}
+
+func isVideo25Model(modelName string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "video-2.5", "video-2.5-480p":
 		return true
 	default:
 		return false

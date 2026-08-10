@@ -22,6 +22,8 @@ var (
 	OpenAIVideoModels = []string{
 		"video-2.0",
 		"video-2.0-fast",
+		"video-2.5",
+		"video-2.5-480p",
 		"sora-2",
 		"sora2",
 		"veo31",

@@ -103,6 +103,8 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	if isMiniMaxH3Model(modelName) {
 		defaultSeconds = "5"
 		defaultSize = "2560x1440"
+	} else if strings.EqualFold(strings.TrimSpace(modelName), "video-2.5-480p") {
+		defaultSize = "864x496"
 	}
 	videoBody := map[string]any{
 		"model":  body["model"],
@@ -151,11 +153,19 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		"image_url",
 		"image_urls",
 		"image_reference",
+		"images",
+		"start_image_url",
+		"end_image_url",
+		"video_url",
+		"video_reference",
+		"audio_url",
+		"audio_reference",
 	} {
 		if value, ok := body[key]; ok {
 			videoBody[key] = value
 		}
 	}
+	normalizeVideo25AsyncOutput(videoBody, modelName)
 	return videoBody
 }
 

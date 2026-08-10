@@ -686,23 +686,31 @@ type TaskRelayInfo struct {
 	LockedChannel any
 }
 
+type TaskMediaReference struct {
+	URL string `json:"url"`
+}
+
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	ImageURL       string                 `json:"image_url,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	ImageURLs      []string               `json:"image_urls,omitempty"`
-	StartImageURL  string                 `json:"start_image_url,omitempty"`
-	EndImageURL    string                 `json:"end_image_url,omitempty"`
-	AudioURL       string                 `json:"audio_url,omitempty"`
-	AspectRatio    string                 `json:"aspect_ratio,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Prompt          string                 `json:"prompt"`
+	Model           string                 `json:"model,omitempty"`
+	Mode            string                 `json:"mode,omitempty"`
+	Image           string                 `json:"image,omitempty"`
+	ImageURL        string                 `json:"image_url,omitempty"`
+	Images          []string               `json:"images,omitempty"`
+	ImageURLs       []string               `json:"image_urls,omitempty"`
+	StartImageURL   string                 `json:"start_image_url,omitempty"`
+	EndImageURL     string                 `json:"end_image_url,omitempty"`
+	VideoURL        string                 `json:"video_url,omitempty"`
+	VideoReference  []TaskMediaReference   `json:"video_reference,omitempty"`
+	AudioURL        string                 `json:"audio_url,omitempty"`
+	AudioReference  []TaskMediaReference   `json:"audio_reference,omitempty"`
+	AspectRatio     string                 `json:"aspect_ratio,omitempty"`
+	Resolution      string                 `json:"resolution,omitempty"`
+	Size            string                 `json:"size,omitempty"`
+	Duration        int                    `json:"duration,omitempty"`
+	Seconds         string                 `json:"seconds,omitempty"`
+	InputReference  string                 `json:"input_reference,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {

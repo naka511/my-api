@@ -40,6 +40,59 @@ func TestNormalizeLinkSkyAsyncVideoBodyCoercesExistingDuration(t *testing.T) {
 	require.Equal(t, 10, body["duration"])
 }
 
+func TestNormalizeLinkSkyAsyncVideoBodyDefaultsVideo25To720P(t *testing.T) {
+	body := map[string]interface{}{
+		"model":    "video-2.5",
+		"duration": 10,
+	}
+
+	normalizeLinkSkyAsyncVideoBody(body)
+
+	require.Equal(t, "720p", body["resolution"])
+	require.Equal(t, true, body["async"])
+}
+
+func TestNormalizeLinkSkyAsyncVideoBodyForcesVideo25480P(t *testing.T) {
+	body := map[string]interface{}{
+		"model":        "video-2.5-480p",
+		"duration":     10,
+		"aspect_ratio": "1:1",
+		"resolution":   "1080p",
+		"size":         "1920x1080",
+	}
+
+	normalizeLinkSkyAsyncVideoBody(body)
+
+	require.Equal(t, "480p", body["resolution"])
+	require.Equal(t, "640x640", body["size"])
+}
+
+func TestValidateVideo25Request(t *testing.T) {
+	valid := &relaycommon.TaskSubmitReq{
+		Prompt:         "test",
+		Duration:       30,
+		AspectRatio:    "16:9",
+		Images:         make([]string, 30),
+		VideoReference: make([]relaycommon.TaskMediaReference, 10),
+		AudioReference: make([]relaycommon.TaskMediaReference, 10),
+	}
+	for index := range valid.VideoReference {
+		valid.VideoReference[index].URL = "https://example.com/video.mp4"
+	}
+	for index := range valid.AudioReference {
+		valid.AudioReference[index].URL = "https://example.com/audio.mp3"
+	}
+	require.NoError(t, validateVideo25Request(valid))
+
+	invalidDuration := *valid
+	invalidDuration.Duration = 31
+	require.ErrorContains(t, validateVideo25Request(&invalidDuration), "between 4 and 30")
+
+	invalidImages := *valid
+	invalidImages.Images = make([]string, 31)
+	require.ErrorContains(t, validateVideo25Request(&invalidImages), "at most 30")
+}
+
 func TestBuildRequestURLUsesAsyncEndpointForLinkSkyOpenAIChannel(t *testing.T) {
 	adaptor := &TaskAdaptor{
 		ChannelType: constant.ChannelTypeOpenAI,
@@ -81,6 +134,21 @@ func TestBuildRequestURLUsesAsyncEndpointForLeoGoModelAlias(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "https://example-leogo.test/v1/video/async-generations", url)
+}
+
+func TestBuildRequestURLUsesAsyncEndpointForVideo25(t *testing.T) {
+	adaptor := &TaskAdaptor{
+		ChannelType: constant.ChannelTypeOpenAI,
+		baseURL:     "https://example-video.test",
+	}
+
+	url, err := adaptor.BuildRequestURL(&relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: "video-2.5-480p"},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://example-video.test/v1/video/async-generations", url)
 }
 
 func TestResponseTaskUpstreamTaskIDFallbacks(t *testing.T) {
