@@ -477,6 +477,54 @@ func isFinalVideoTaskFailureReason(reason string) bool {
 	return false
 }
 
+func isNoTokenVideoTaskFailureReason(reason string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(reason))
+	if normalized == "" {
+		return false
+	}
+	for _, signal := range []string{
+		"no_token",
+		"no token",
+		"no available token",
+		"no tokens available",
+		"token unavailable",
+		"token pool",
+		"token exhausted",
+		"token quota exhausted",
+		"没有可用 token",
+		"无可用 token",
+		"令牌池为空",
+	} {
+		if strings.Contains(normalized, signal) {
+			return true
+		}
+	}
+	return false
+}
+
+func noTokenVideoTaskFailureReason(responseBody []byte) string {
+	var errorResult dto.GeneralErrorResponse
+	if err := common.Unmarshal(responseBody, &errorResult); err == nil {
+		message := strings.TrimSpace(errorResult.ToMessage())
+		if isNoTokenVideoTaskFailureReason(message) {
+			// 有些上游会把完整的错误 JSON 再放进外层 message 字符串。
+			var nestedError dto.GeneralErrorResponse
+			if err := common.Unmarshal([]byte(message), &nestedError); err == nil {
+				nestedMessage := strings.TrimSpace(nestedError.ToMessage())
+				if isNoTokenVideoTaskFailureReason(nestedMessage) {
+					return nestedMessage
+				}
+			}
+			return message
+		}
+	}
+	// 兼容上游把错误 JSON 放在外层 message 字符串中的包装格式。
+	if isNoTokenVideoTaskFailureReason(string(responseBody)) {
+		return "No tokens available"
+	}
+	return ""
+}
+
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
 	baseURL := constant.ChannelBaseURLs[ch.Type]
 	if ch.GetBaseURL() != "" {
@@ -514,19 +562,25 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	snap := task.Snapshot()
 
 	taskResult := &relaycommon.TaskInfo{}
-	// try parse as New API response format
-	var responseItems dto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
-		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
-		t := responseItems.Data
-		taskResult.TaskID = t.TaskID
-		taskResult.Status = string(t.Status)
-		taskResult.Url = t.GetResultURL()
-		taskResult.Progress = t.Progress
-		taskResult.Reason = t.FailReason
-		task.Data = t.Data
-	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
-		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+	// Token 池耗尽是明确终态，必须优先于普通任务状态解析，不能进入重试确认流程。
+	if reason := noTokenVideoTaskFailureReason(responseBody); reason != "" {
+		taskResult = relaycommon.FailTaskInfo(reason)
+		logger.LogWarn(ctx, fmt.Sprintf("Task %s failed immediately because upstream has no available token: %s", taskId, reason))
+	} else {
+		// try parse as New API response format
+		var responseItems dto.TaskResponse[model.Task]
+		if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+			logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
+			t := responseItems.Data
+			taskResult.TaskID = t.TaskID
+			taskResult.Status = string(t.Status)
+			taskResult.Url = t.GetResultURL()
+			taskResult.Progress = t.Progress
+			taskResult.Reason = t.FailReason
+			task.Data = t.Data
+		} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
+			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		}
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)

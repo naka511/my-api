@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNoTokenVideoTaskFailureReason(t *testing.T) {
+	require.Equal(t, "No tokens available", noTokenVideoTaskFailureReason([]byte(`{"error":{"message":"No tokens available","type":"server_error"}}`)))
+	require.Equal(t, "No tokens available", noTokenVideoTaskFailureReason([]byte(`{"message":"{\"error\":{\"message\":\"No tokens available\"}}"}`)))
+	require.Empty(t, noTokenVideoTaskFailureReason([]byte(`{"error":{"message":"temporary upstream query error"}}`)))
+}
+
 type capturePollingAdaptor struct {
 	body map[string]any
 }
