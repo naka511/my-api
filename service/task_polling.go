@@ -437,6 +437,17 @@ func isFinalVideoTaskFailureReason(reason string) bool {
 	finalSignals := []string{
 		"model_not_found",
 		"no available channel",
+		"no_token",
+		"no token",
+		"no available token",
+		"no tokens available",
+		"token unavailable",
+		"token pool",
+		"token exhausted",
+		"token quota exhausted",
+		"没有可用 token",
+		"无可用 token",
+		"令牌池为空",
 		"no access to model",
 		"this token has no access",
 		"unauthorized",
@@ -535,10 +546,21 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 					return nil
 				}
 
-				// 查询任务状态时的上游 error 可能只是临时查询失败；任务本身仍可能在上游继续生成。
-				// 只有 ParseTaskResult 明确解析到 failed 状态时才将任务标记为失败。
-				logger.LogWarn(ctx, fmt.Sprintf("Task %s poll returned upstream error, keep current status and retry next round: %s", taskId, openaiError.Message))
-				return nil
+				code := fmt.Sprint(openaiError.Code)
+				message := strings.TrimSpace(openaiError.Message)
+				if isFinalVideoTaskFailureReason(code) || isFinalVideoTaskFailureReason(message) {
+					// 明确的资源/权限/请求终态错误不能继续等待，否则会把“无 Token”
+					// 任务一直挂到上游或本地任务超时。
+					if message == "" {
+						message = code
+					}
+					taskResult = relaycommon.FailTaskInfo(message)
+				} else {
+					// 查询任务状态时的普通上游 error 可能只是临时查询失败；
+					// 任务本身仍可能在上游继续生成，保持原状态等待下一轮。
+					logger.LogWarn(ctx, fmt.Sprintf("Task %s poll returned upstream error, keep current status and retry next round: %s", taskId, openaiError.Message))
+					return nil
+				}
 			} else {
 				// unknown error format, log original response
 				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))

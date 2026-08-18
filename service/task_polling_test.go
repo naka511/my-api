@@ -55,6 +55,25 @@ func (a *transientErrorPollingAdaptor) AdjustBillingOnComplete(task *model.Task,
 	return 0
 }
 
+type noTokenPollingAdaptor struct{}
+
+func (a *noTokenPollingAdaptor) Init(info *relaycommon.RelayInfo) {}
+
+func (a *noTokenPollingAdaptor) FetchTask(baseURL string, key string, body map[string]any, proxy string) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"no_token","message":"no token"}}`)),
+	}, nil
+}
+
+func (a *noTokenPollingAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
+	return &relaycommon.TaskInfo{}, nil
+}
+
+func (a *noTokenPollingAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	return 0
+}
+
 type failurePollingAdaptor struct {
 	reason string
 }
@@ -146,6 +165,42 @@ func TestUpdateVideoSingleTaskKeepsStatusOnTransientPollError(t *testing.T) {
 	require.Equal(t, model.TaskStatus(model.TaskStatusQueued), updated.Status)
 	require.Equal(t, "10%", updated.Progress)
 	require.Empty(t, updated.FailReason)
+}
+
+func TestUpdateVideoSingleTaskFailsImmediatelyOnNoTokenError(t *testing.T) {
+	truncate(t)
+
+	ch := &model.Channel{
+		Id:     1,
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    "test-key",
+		Name:   "test-channel",
+		Status: common.ChannelStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(ch).Error)
+
+	task := &model.Task{
+		TaskID:    "public_task",
+		ChannelId: 1,
+		Platform:  constant.TaskPlatform("1"),
+		Status:    model.TaskStatusInProgress,
+		Progress:  "30%",
+		PrivateData: model.TaskPrivateData{
+			UpstreamTaskID: "upstream_task",
+		},
+	}
+	require.NoError(t, task.Insert())
+
+	err := updateVideoSingleTask(context.Background(), &noTokenPollingAdaptor{}, ch, "upstream_task", map[string]*model.Task{
+		"upstream_task": task,
+	})
+	require.NoError(t, err)
+
+	var updated model.Task
+	require.NoError(t, model.DB.First(&updated, task.ID).Error)
+	require.Equal(t, model.TaskStatus(model.TaskStatusFailure), updated.Status)
+	require.Equal(t, "100%", updated.Progress)
+	require.Equal(t, "no token", updated.FailReason)
 }
 
 func TestUpdateVideoSingleTaskDelaysRetryableFailure(t *testing.T) {
