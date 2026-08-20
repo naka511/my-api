@@ -2623,6 +2623,7 @@
     "简洁模式：按 type 全量清理对象，例如 redacted_thinking。": "シンプルモード：typeごとにすべてのオブジェクトをプルーニングします（例：redacted_thinking）。",
     "简洁模式仅返回 message；状态码和错误类型将使用系统默认值。": "シンプルモードはメッセージのみを返します。ステータスコードとエラータイプはシステムのデフォルト値を使用します。",
     "管理": "管理",
+    "管理额度": "管理クォータ",
     "管理 Ollama 模型的拉取和删除": "Manage Ollama model pulling and deletion",
     "管理你的 LinuxDO OAuth App": "LinuxDO OAuth Appの管理",
     "管理员": "管理者",

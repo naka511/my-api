@@ -2633,6 +2633,7 @@
     "简洁模式：按 type 全量清理对象，例如 redacted_thinking。": "",
     "简洁模式仅返回 message；状态码和错误类型将使用系统默认值。": "",
     "管理": "管理",
+    "管理额度": "管理額度",
     "管理 Ollama 模型的拉取和删除": "管理 Ollama 模型的拉取和刪除",
     "管理你的 LinuxDO OAuth App": "管理你的 LinuxDO OAuth App",
     "管理员": "管理員",

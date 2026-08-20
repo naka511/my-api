@@ -103,6 +103,10 @@ func resolveLogUsername(c *gin.Context, userId int) string {
 }
 
 func RecordLog(userId int, logType int, content string) {
+	RecordLogWithQuota(userId, logType, 0, content)
+}
+
+func RecordLogWithQuota(userId int, logType int, quota int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -113,6 +117,7 @@ func RecordLog(userId int, logType int, content string) {
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
+		Quota:     quota,
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
@@ -122,6 +127,10 @@ func RecordLog(userId int, logType int, content string) {
 
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
 func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
+	RecordLogWithAdminInfoAndQuota(userId, logType, 0, content, adminInfo)
+}
+
+func RecordLogWithAdminInfoAndQuota(userId int, logType int, quota int, content string, adminInfo map[string]interface{}) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -132,6 +141,7 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
+		Quota:     quota,
 	}
 	if len(adminInfo) > 0 {
 		other := map[string]interface{}{
@@ -145,6 +155,10 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	RecordTopupLogWithQuota(userId, 0, content, callerIp, paymentMethod, callbackPaymentMethod)
+}
+
+func RecordTopupLogWithQuota(userId int, quota int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
@@ -163,6 +177,7 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		CreatedAt: common.GetTimestamp(),
 		Type:      LogTypeTopup,
 		Content:   content,
+		Quota:     quota,
 		Ip:        callerIp,
 		Other:     common.MapToJsonStr(other),
 	}
@@ -301,6 +316,14 @@ type RecordTaskBillingLogParams struct {
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
+	}
+	if params.Other == nil {
+		params.Other = make(map[string]interface{})
+	}
+	// Mark every task settlement log explicitly so dashboard call counts can
+	// use the final task status instead of counting submit-time billing logs.
+	if _, ok := params.Other["task_id"]; ok {
+		params.Other["is_task"] = true
 	}
 	username, _ := GetUsernameById(params.UserId, false)
 	tokenName := ""

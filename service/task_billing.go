@@ -158,6 +158,17 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	}
 }
 
+// adjustTaskUsageStats keeps cumulative user/channel consumption aligned with
+// the actual settled amount. Request count is intentionally not changed here:
+// submission already counted the request once.
+func adjustTaskUsageStats(task *model.Task, delta int) {
+	if task == nil || delta == 0 {
+		return
+	}
+	model.UpdateUserUsedQuota(task.UserId, delta)
+	model.UpdateChannelUsedQuota(task.ChannelId, delta)
+}
+
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -205,6 +216,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
 		return
 	}
+	adjustTaskUsageStats(task, -quota)
 
 	// 2. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
@@ -269,18 +281,25 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
+	if task.ID != 0 {
+		updated, err := model.UpdateTaskQuotaIfCurrent(task.ID, preConsumedQuota, actualQuota)
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("持久化任务实际计费额度失败 task %s: %s", task.TaskID, err.Error()))
+		} else if !updated {
+			logger.LogWarn(ctx, fmt.Sprintf("任务实际计费额度未更新，可能已被其他结算覆盖 task %s", task.TaskID))
+		}
+	}
 
 	var logType int
 	var logQuota int
 	if quotaDelta > 0 {
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
-		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 	}
+	adjustTaskUsageStats(task, quotaDelta)
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota

@@ -34,7 +34,13 @@ const LogsActions = ({
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
-  const quotaLabel = Number(logType) === 6 ? t('退款额度') : t('消耗额度');
+  const quotaLabels = {
+    1: t('充值额度'),
+    2: t('消耗额度'),
+    3: t('管理额度'),
+    6: t('退款额度'),
+  };
+  const quotaLabel = quotaLabels[Number(logType)] || t('消耗额度');
 
   const placeholder = (
     <Space>

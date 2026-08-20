@@ -188,10 +188,6 @@ const Dashboard = () => {
         t={dashboardData.t}
         loading={dashboardData.taskSummaryLoading}
         summary={dashboardData.taskSummary}
-        dateRange={dashboardData.taskSummaryDateRange}
-        onDateRangeChange={dashboardData.handleTaskSummaryDateRangeChange}
-        onQuery={dashboardData.handleTaskSummaryQuery}
-        onReset={dashboardData.handleTaskSummaryReset}
       />
 
       {/* API信息和图表面板 */}

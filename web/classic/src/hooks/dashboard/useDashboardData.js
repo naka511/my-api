@@ -27,7 +27,7 @@ import {
   showError,
   timestamp2string,
 } from '../../helpers';
-import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
+import { getDefaultTime } from '../../helpers/dashboard';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
 import { useMinimumLoadingTime } from '../common/useMinimumLoadingTime';
@@ -49,19 +49,14 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     username: '',
     token_name: '',
     model_name: '',
-    start_timestamp: getInitialTimestamp(),
-    end_timestamp: timestamp2string(new Date().getTime() / 1000 + 3600),
+    start_timestamp: timestamp2string(getTodayStartTimestamp()),
+    end_timestamp: timestamp2string(new Date().getTime() / 1000),
     channel: '',
     data_export_default_time: '',
   });
 
   const [dataExportDefaultTime, setDataExportDefaultTime] =
     useState(getDefaultTime());
-
-  const createDefaultTaskSummaryDateRange = () => [
-    timestamp2string(getTodayStartTimestamp()),
-    timestamp2string(new Date().getTime() / 1000 + 3600),
-  ];
 
   // ========== 数据状态 ==========
   const [quotaData, setQuotaData] = useState([]);
@@ -77,12 +72,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     video: { running: 0, success: 0, failed: 0 },
   });
   const [taskSummaryLoading, setTaskSummaryLoading] = useState(false);
-  const [taskSummaryDateRange, setTaskSummaryDateRange] = useState(
-    createDefaultTaskSummaryDateRange,
-  );
-  const [taskSummaryQueryDateRange, setTaskSummaryQueryDateRange] = useState(
-    createDefaultTaskSummaryDateRange,
-  );
 
   // ========== 图表状态 ==========
   const [activeChartTab, setActiveChartTab] = useState('1');
@@ -258,12 +247,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [inputs, isAdminUser]);
 
   const loadTaskSummaryData = useCallback(
-    async (range = taskSummaryQueryDateRange) => {
-      if (!range || !Array.isArray(range) || range.length !== 2) {
-        return;
-      }
-      const localStartTimestamp = Date.parse(range[0]) / 1000;
-      const localEndTimestamp = Date.parse(range[1]) / 1000;
+    async () => {
+      const { start_timestamp, end_timestamp, username } = inputs;
+      const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+      const localEndTimestamp = Date.parse(end_timestamp) / 1000;
       if (isNaN(localStartTimestamp) || isNaN(localEndTimestamp)) {
         return;
       }
@@ -271,7 +258,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       setTaskSummaryLoading(true);
       try {
         const url = isAdminUser
-          ? `/api/log/stat?type=0&username=&token_name=&model_name=&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=&group=`
+          ? `/api/log/stat?type=0&username=${encodeURIComponent(username)}&token_name=&model_name=&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=&group=`
           : `/api/log/self/stat?type=0&token_name=&model_name=&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=`;
         const res = await API.get(url);
         const { success, message, data } = res.data;
@@ -290,27 +277,8 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
         setTaskSummaryLoading(false);
       }
     },
-    [isAdminUser, taskSummaryQueryDateRange],
+    [inputs, isAdminUser],
   );
-
-  const handleTaskSummaryDateRangeChange = useCallback((value) => {
-    if (!value || !Array.isArray(value) || value.length !== 2) {
-      return;
-    }
-    setTaskSummaryDateRange(value);
-  }, []);
-
-  const handleTaskSummaryQuery = useCallback(() => {
-    setTaskSummaryQueryDateRange(taskSummaryDateRange);
-    loadTaskSummaryData(taskSummaryDateRange);
-  }, [loadTaskSummaryData, taskSummaryDateRange]);
-
-  const handleTaskSummaryReset = useCallback(() => {
-    const range = createDefaultTaskSummaryDateRange();
-    setTaskSummaryDateRange(range);
-    setTaskSummaryQueryDateRange(range);
-    loadTaskSummaryData(range);
-  }, [loadTaskSummaryData]);
 
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);
@@ -381,7 +349,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     setModelColors,
     taskSummary,
     taskSummaryLoading,
-    taskSummaryDateRange,
 
     // 图表状态
     activeChartTab,
@@ -420,9 +387,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     getUserData,
     refresh,
     handleSearchConfirm,
-    handleTaskSummaryDateRangeChange,
-    handleTaskSummaryQuery,
-    handleTaskSummaryReset,
 
     // 导航和翻译
     navigate,

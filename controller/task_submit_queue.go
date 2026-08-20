@@ -84,8 +84,6 @@ func RelayTaskLocalQueue(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool 
 		return true
 	}
 
-	service.LogTaskConsumption(c, relayInfo)
-
 	task := model.InitTask(prepared.Platform, relayInfo)
 	task.PrivateData.SubmitRequestBody = requestBody
 	task.PrivateData.SubmitContentSummary = buildTaskContentSummary(task, requestBody)
@@ -111,6 +109,11 @@ func RelayTaskLocalQueue(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool 
 		respondTaskError(c, taskErr)
 		return true
 	}
+
+	// Record the pending consumption only after the task row exists. If the
+	// insert fails, BillingSession.Refund handles the pre-consume rollback and
+	// there must be no cumulative usage or consume log left behind.
+	service.LogTaskConsumption(c, relayInfo)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":         task.TaskID,
@@ -235,26 +238,29 @@ func submitLocalQueuedVideoTasks(ctx context.Context, config localAsyncVideoSubm
 }
 
 func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
+	stopHeartbeat := startLocalQueuedSubmitHeartbeat(ctx, task)
+	defer stopHeartbeat()
+
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
 	if err != nil {
-		failLocalQueuedVideoTask(ctx, task, fmt.Sprintf("get channel failed: %s", err.Error()))
+		failLocalQueuedVideoTask(ctx, task, fmt.Sprintf("get channel failed: %s", err.Error()), stopHeartbeat)
 		return err
 	}
 	if channelModel.Status != common.ChannelStatusEnabled {
 		err = fmt.Errorf("channel #%d is disabled", channelModel.Id)
-		failLocalQueuedVideoTask(ctx, task, err.Error())
+		failLocalQueuedVideoTask(ctx, task, err.Error(), stopHeartbeat)
 		return err
 	}
 
 	c, relayInfo, err := buildLocalQueuedSubmitContext(task, channelModel)
 	if err != nil {
-		failLocalQueuedVideoTask(ctx, task, err.Error())
+		failLocalQueuedVideoTask(ctx, task, err.Error(), stopHeartbeat)
 		return err
 	}
 
 	result, taskErr := relay.RelayTaskSubmit(c, relayInfo)
 	if taskErr != nil {
-		failLocalQueuedVideoTask(ctx, task, taskErr.Message)
+		failLocalQueuedVideoTask(ctx, task, taskErr.Message, stopHeartbeat)
 		if taskErr.Error != nil {
 			return taskErr.Error
 		}
@@ -262,7 +268,7 @@ func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
 	}
 	if result == nil || strings.TrimSpace(result.UpstreamTaskID) == "" {
 		err = fmt.Errorf("upstream task_id is empty")
-		failLocalQueuedVideoTask(ctx, task, err.Error())
+		failLocalQueuedVideoTask(ctx, task, err.Error(), stopHeartbeat)
 		return err
 	}
 
@@ -278,9 +284,17 @@ func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
 	task.Data = result.TaskData
 	task.Status = model.TaskStatusSubmitted
 	task.Progress = "10%"
+	// Stop the lease renewer before the final CAS and use its latest timestamp
+	// as the ownership token.
+	stopHeartbeat()
+	claimedAt := task.UpdatedAt
 	task.UpdatedAt = time.Now().Unix()
-	if err := task.Update(); err != nil {
+	updated, err := model.UpdateLocalQueuedSubmitTask(task, claimedAt)
+	if err != nil {
 		return err
+	}
+	if !updated {
+		return fmt.Errorf("submit lease lost for task %s", task.TaskID)
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("local queued video task %s submitted to upstream task %s", task.TaskID, result.UpstreamTaskID))
 	return nil
@@ -317,7 +331,11 @@ func buildLocalQueuedSubmitContext(task *model.Task, channelModel *model.Channel
 	return c, relayInfo, nil
 }
 
-func failLocalQueuedVideoTask(ctx context.Context, task *model.Task, reason string) {
+func failLocalQueuedVideoTask(ctx context.Context, task *model.Task, reason string, stopHeartbeat func()) {
+	if stopHeartbeat != nil {
+		stopHeartbeat()
+	}
+	claimedAt := task.UpdatedAt
 	task.PrivateData.SubmitRequestBody = nil
 	task.PrivateData.LastSubmitError = reason
 	task.PrivateData.SubmitAttempts++
@@ -325,9 +343,43 @@ func failLocalQueuedVideoTask(ctx context.Context, task *model.Task, reason stri
 	task.Progress = "100%"
 	task.FailReason = reason
 	task.FinishTime = time.Now().Unix()
-	if err := task.Update(); err != nil {
+	updated, err := model.UpdateLocalQueuedSubmitTask(task, claimedAt)
+	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("mark local queued video task %s failed: %s", task.TaskID, err.Error()))
 		return
 	}
+	if !updated {
+		logger.LogWarn(ctx, fmt.Sprintf("skip failure/refund for reclaimed local queued task %s", task.TaskID))
+		return
+	}
 	service.RefundTaskQuota(ctx, task, reason)
+}
+
+func startLocalQueuedSubmitHeartbeat(ctx context.Context, task *model.Task) func() {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	var stopOnce sync.Once
+	go func() {
+		defer close(finished)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				owned, err := model.TouchLocalQueuedSubmitTask(task)
+				if err != nil {
+					logger.LogWarn(ctx, fmt.Sprintf("renew local queued submit lease for task %s failed: %s", task.TaskID, err.Error()))
+				} else if !owned {
+					logger.LogWarn(ctx, fmt.Sprintf("local queued submit lease lost for task %s", task.TaskID))
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() {
+		stopOnce.Do(func() { close(done) })
+		<-finished
+	}
 }

@@ -96,7 +96,7 @@ export const useTaskLogsData = () => {
     username: '',
     dateRange: [
       timestamp2string(zeroNow.getTime() / 1000),
-      timestamp2string(now.getTime() / 1000 + 3600),
+      timestamp2string(now.getTime() / 1000),
     ],
   };
 
@@ -200,7 +200,7 @@ export const useTaskLogsData = () => {
 
     // 处理时间范围
     let start_timestamp = timestamp2string(zeroNow.getTime() / 1000);
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
+    let end_timestamp = timestamp2string(now.getTime() / 1000);
 
     if (
       formValues.dateRange &&

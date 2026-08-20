@@ -373,6 +373,46 @@ func ClaimLocalQueuedSubmitTask(task *Task) (bool, error) {
 	if result.Error != nil {
 		return false, result.Error
 	}
+	if result.RowsAffected > 0 {
+		task.Progress = "1%"
+		task.UpdatedAt = now
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// TouchLocalQueuedSubmitTask renews the submit worker lease. The timestamp
+// comparison prevents a stale worker from renewing a lease already reclaimed
+// by another worker.
+func TouchLocalQueuedSubmitTask(task *Task) (bool, error) {
+	if task == nil || task.ID == 0 || task.UpdatedAt == 0 {
+		return false, nil
+	}
+	now := time.Now().Unix()
+	result := DB.Model(&Task{}).
+		Where("id = ? AND status = ? AND progress = ? AND updated_at = ?", task.ID, TaskStatusSubmitted, "1%", task.UpdatedAt).
+		Update("updated_at", now)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected > 0 {
+		task.UpdatedAt = now
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// UpdateLocalQueuedSubmitTask persists a submit result only while the caller
+// still owns the claimed lease. This avoids an old worker overwriting a task
+// that has already been reclaimed after a timeout.
+func UpdateLocalQueuedSubmitTask(task *Task, claimedAt int64) (bool, error) {
+	if task == nil || task.ID == 0 || claimedAt == 0 {
+		return false, nil
+	}
+	result := DB.Model(&Task{}).
+		Where("id = ? AND status = ? AND progress = ? AND updated_at = ?", task.ID, TaskStatusSubmitted, "1%", claimedAt).
+		Select("*").Updates(task)
+	if result.Error != nil {
+		return false, result.Error
+	}
 	return result.RowsAffected > 0, nil
 }
 
@@ -395,6 +435,7 @@ func ResetStuckLocalQueuedSubmitTasks(cutoffUnix int64, limit int) (int64, error
 
 	result := DB.Model(&Task{}).
 		Where("id IN ?", taskIDs).
+		Where("status = ? AND progress = ? AND updated_at < ?", TaskStatusSubmitted, "1%", cutoffUnix).
 		Updates(map[string]any{
 			"progress": "0%",
 		})
@@ -509,6 +550,22 @@ func (Task *Task) Update() error {
 // zero rows, which silently bypasses the CAS guard.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
 	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// UpdateTaskQuotaIfCurrent persists a settled quota without overwriting any
+// concurrent task status/result fields. The old quota guard makes the update
+// idempotent for callers that may retry settlement.
+func UpdateTaskQuotaIfCurrent(id int64, oldQuota int, newQuota int) (bool, error) {
+	if id == 0 || oldQuota == newQuota {
+		return false, nil
+	}
+	result := DB.Model(&Task{}).
+		Where("id = ? AND quota = ?", id, oldQuota).
+		Update("quota", newQuota)
 	if result.Error != nil {
 		return false, result.Error
 	}

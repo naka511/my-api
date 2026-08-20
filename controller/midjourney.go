@@ -180,7 +180,12 @@ func UpdateMidjourneyTaskBulk() {
 					err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
 					if err != nil {
 						logger.LogError(ctx, "fail to increase user quota: "+err.Error())
+						continue
 					}
+					// Midjourney records usage at successful submission time, so a
+					// later generation failure must also reverse cumulative usage.
+					model.UpdateUserUsedQuota(task.UserId, -task.Quota)
+					model.UpdateChannelUsedQuota(task.ChannelId, -task.Quota)
 					model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 						UserId:    task.UserId,
 						LogType:   model.LogTypeRefund,
