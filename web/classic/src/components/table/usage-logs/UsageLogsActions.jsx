@@ -27,12 +27,14 @@ const LogsActions = ({
   stat,
   loadingStat,
   showStat,
+  logType,
   compactMode,
   setCompactMode,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
+  const quotaLabel = Number(logType) === 6 ? t('退款额度') : t('消耗额度');
 
   const placeholder = (
     <Space>
@@ -53,7 +55,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            {t('消耗额度')}: {renderQuota(stat.quota)}
+            {quotaLabel}: {renderQuota(stat.quota)}
           </Tag>
         </Space>
       </Skeleton>

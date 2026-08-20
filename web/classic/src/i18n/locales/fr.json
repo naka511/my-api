@@ -3398,6 +3398,7 @@
     "追加模板": "Ajouter le modèle",
     "退出": "Quitter",
     "退款": "Remboursement",
+    "退款额度": "Quota remboursé",
     "适合 MJ / 任务类等按次收费模型。": "Convient aux modèles MJ et autres modèles facturés à la requête.",
     "适合同系列模型一起定价，例如把 gpt-5.1 的价格批量同步到 gpt-5.1-high、gpt-5.1-low 等模型。": "Pratique pour tarifer ensemble des variantes d'un même modèle, par exemple synchroniser le prix de gpt-5.1 vers gpt-5.1-high, gpt-5.1-low et autres variantes similaires.",
     "适用于个人使用的场景，不需要设置模型价格": "Adapté à un usage personnel, pas besoin de définir le prix du modèle.",

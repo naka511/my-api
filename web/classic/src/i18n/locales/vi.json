@@ -3851,6 +3851,7 @@
     "退出全屏": "Thoát toàn màn hình",
     "退出登录": "Đăng xuất",
     "退款": "Hoàn tiền",
+    "退款额度": "Hạn ngạch hoàn tiền",
     "适合 MJ / 任务类等按次收费模型。": "Phù hợp cho MJ và các mô hình tính phí theo lượt gọi tương tự.",
     "适合同系列模型一起定价，例如把 gpt-5.1 的价格批量同步到 gpt-5.1-high、gpt-5.1-low 等模型。": "Phù hợp để định giá cùng lúc các biến thể cùng dòng, ví dụ đồng bộ giá của gpt-5.1 sang gpt-5.1-high, gpt-5.1-low và các mô hình tương tự.",
     "适用于个人使用的场景，不需要设置模型价格": "Phù hợp cho mục đích sử dụng cá nhân, không cần đặt giá mô hình.",

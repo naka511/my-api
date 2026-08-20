@@ -3520,6 +3520,7 @@
     "追加模板": "Append Template",
     "退出": "Quit",
     "退款": "Refund",
+    "退款额度": "Refund Quota",
     "适合 MJ / 任务类等按次收费模型。": "Suitable for MJ and other task-based models billed per request.",
     "适合同系列模型一起定价，例如把 gpt-5.1 的价格批量同步到 gpt-5.1-high、gpt-5.1-low 等模型。": "Useful for pricing model variants together, for example syncing the pricing of gpt-5.1 to gpt-5.1-high, gpt-5.1-low, and similar models.",
     "适用于个人使用的场景，不需要设置模型价格": "Suitable for personal use, no need to set model price.",
