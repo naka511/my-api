@@ -98,8 +98,7 @@ export const useLogsData = () => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  let now = new Date();
-  const formInitValues = {
+  const getDefaultFormValues = () => ({
     username: '',
     token_name: '',
     model_name: '',
@@ -108,10 +107,11 @@ export const useLogsData = () => {
     request_id: '',
     dateRange: [
       timestamp2string(getTodayStartTimestamp()),
-      timestamp2string(now.getTime() / 1000),
+      timestamp2string(new Date().getTime() / 1000),
     ],
     logType: '0',
-  };
+  });
+  const formInitValues = getDefaultFormValues();
 
   // Get default column visibility based on user role
   const getDefaultColumnVisibility = () => {
@@ -240,9 +240,10 @@ export const useLogsData = () => {
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
+    const defaultValues = getDefaultFormValues();
 
-    let start_timestamp = timestamp2string(getTodayStartTimestamp());
-    let end_timestamp = timestamp2string(now.getTime() / 1000);
+    let start_timestamp = defaultValues.dateRange[0];
+    let end_timestamp = defaultValues.dateRange[1];
 
     if (
       formValues.dateRange &&
@@ -267,7 +268,7 @@ export const useLogsData = () => {
   };
 
   // Statistics functions
-  const getLogSelfStat = async () => {
+  const getLogSelfStat = async (valuesOverride = null) => {
     const {
       token_name,
       model_name,
@@ -275,7 +276,7 @@ export const useLogsData = () => {
       end_timestamp,
       group,
       logType: formLogType,
-    } = getFormValues();
+    } = valuesOverride || getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
@@ -290,7 +291,7 @@ export const useLogsData = () => {
     }
   };
 
-  const getLogStat = async () => {
+  const getLogStat = async (valuesOverride = null) => {
     const {
       username,
       token_name,
@@ -300,7 +301,7 @@ export const useLogsData = () => {
       channel,
       group,
       logType: formLogType,
-    } = getFormValues();
+    } = valuesOverride || getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
@@ -315,15 +316,15 @@ export const useLogsData = () => {
     }
   };
 
-  const handleEyeClick = async () => {
+  const handleEyeClick = async (valuesOverride = null) => {
     if (loadingStat) {
       return;
     }
     setLoadingStat(true);
     if (isAdminUser) {
-      await getLogStat();
+      await getLogStat(valuesOverride);
     } else {
-      await getLogSelfStat();
+      await getLogSelfStat(valuesOverride);
     }
     setShowStat(true);
     setLoadingStat(false);
@@ -731,7 +732,12 @@ export const useLogsData = () => {
   };
 
   // Load logs function
-  const loadLogs = async (startIdx, pageSize, customLogType = null) => {
+  const loadLogs = async (
+    startIdx,
+    pageSize,
+    customLogType = null,
+    valuesOverride = null,
+  ) => {
     setLoading(true);
 
     let url = '';
@@ -745,7 +751,7 @@ export const useLogsData = () => {
       group,
       request_id,
       logType: formLogType,
-    } = getFormValues();
+    } = valuesOverride || getFormValues();
 
     const currentLogType =
       customLogType !== null
@@ -795,10 +801,24 @@ export const useLogsData = () => {
   };
 
   // Refresh function
-  const refresh = async () => {
+  const refresh = async (valuesOverride = null) => {
     setActivePage(1);
-    await handleEyeClick();
-    await loadLogs(1, pageSize);
+    await handleEyeClick(valuesOverride);
+    await loadLogs(1, pageSize, null, valuesOverride);
+  };
+
+  const resetFilters = async () => {
+    const defaultValues = getDefaultFormValues();
+    if (formApi) {
+      formApi.setValues(defaultValues);
+    }
+    setLogType(0);
+    await refresh({
+      ...defaultValues,
+      logType: 0,
+      start_timestamp: defaultValues.dateRange[0],
+      end_timestamp: defaultValues.dateRange[1],
+    });
   };
 
   // Copy text function
@@ -892,6 +912,7 @@ export const useLogsData = () => {
     handlePageChange,
     handlePageSizeChange,
     refresh,
+    resetFilters,
     copyText,
     handleEyeClick,
     setLogsFormat,

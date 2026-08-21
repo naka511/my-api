@@ -27,8 +27,8 @@ const MjLogsFilters = ({
   formInitValues,
   setFormApi,
   refresh,
+  resetFilters,
   setShowColumnSelector,
-  formApi,
   loading,
   isAdminUser,
   t,
@@ -101,14 +101,7 @@ const MjLogsFilters = ({
             </Button>
             <Button
               type='tertiary'
-              onClick={() => {
-                if (formApi) {
-                  formApi.reset();
-                  setTimeout(() => {
-                    refresh();
-                  }, 100);
-                }
-              }}
+              onClick={resetFilters}
               size='small'
             >
               {t('重置')}

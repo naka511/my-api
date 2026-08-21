@@ -86,19 +86,23 @@ export const useTaskLogsData = () => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  let now = new Date();
-  let zeroNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const formInitValues = {
-    channel_id: '',
-    task_id: '',
-    task_status: '',
-    username: '',
-    dateRange: [
-      timestamp2string(zeroNow.getTime() / 1000),
-      timestamp2string(now.getTime() / 1000),
-    ],
+  const getDefaultFormValues = () => {
+    const now = new Date();
+    const zeroNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return {
+      channel_id: '',
+      task_id: '',
+      task_status: '',
+      username: '',
+      dateRange: [
+        timestamp2string(zeroNow.getTime() / 1000),
+        timestamp2string(now.getTime() / 1000),
+      ],
+    };
   };
+
+  const formInitValues = getDefaultFormValues();
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({});
@@ -197,10 +201,11 @@ export const useTaskLogsData = () => {
   // Get form values helper function
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
+    const defaultValues = getDefaultFormValues();
 
     // 处理时间范围
-    let start_timestamp = timestamp2string(zeroNow.getTime() / 1000);
-    let end_timestamp = timestamp2string(now.getTime() / 1000);
+    let start_timestamp = defaultValues.dateRange[0];
+    let end_timestamp = defaultValues.dateRange[1];
 
     if (
       formValues.dateRange &&
@@ -240,10 +245,10 @@ export const useTaskLogsData = () => {
   };
 
   // Load logs function
-  const loadLogs = async (page = 1, size = pageSize) => {
+  const loadLogs = async (page = 1, size = pageSize, valuesOverride = null) => {
     setLoading(true);
     const { channel_id, task_id, task_status, username, start_timestamp, end_timestamp } =
-      getFormValues();
+      valuesOverride || getFormValues();
     let localStartTimestamp = parseInt(Date.parse(start_timestamp) / 1000);
     let localEndTimestamp = parseInt(Date.parse(end_timestamp) / 1000);
     let url = isAdminUser
@@ -272,6 +277,22 @@ export const useTaskLogsData = () => {
   // Refresh function
   const refresh = async () => {
     await loadLogs(1, pageSize);
+  };
+
+  // Reset filters with a fresh end time so newly created tasks are included.
+  const resetFilters = async () => {
+    const defaultValues = getDefaultFormValues();
+    if (formApi) {
+      formApi.setValues(defaultValues);
+    }
+    await loadLogs(1, pageSize, {
+      channel_id: '',
+      task_id: '',
+      task_status: '',
+      username: '',
+      start_timestamp: defaultValues.dateRange[0],
+      end_timestamp: defaultValues.dateRange[1],
+    });
   };
 
   // Copy text function
@@ -394,6 +415,7 @@ export const useTaskLogsData = () => {
     handlePageChange,
     handlePageSizeChange,
     refresh,
+    resetFilters,
     copyText,
     openContentModal,
     openTaskContentModal,

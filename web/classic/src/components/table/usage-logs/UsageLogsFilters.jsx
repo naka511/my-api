@@ -27,8 +27,8 @@ const LogsFilters = ({
   formInitValues,
   setFormApi,
   refresh,
+  resetFilters,
   setShowColumnSelector,
-  formApi,
   setLogType,
   loading,
   isAdminUser,
@@ -164,15 +164,7 @@ const LogsFilters = ({
             </Button>
             <Button
               type='tertiary'
-              onClick={() => {
-                if (formApi) {
-                  formApi.reset();
-                  setLogType(0);
-                  setTimeout(() => {
-                    refresh();
-                  }, 100);
-                }
-              }}
+              onClick={resetFilters}
               size='small'
             >
               {t('重置')}

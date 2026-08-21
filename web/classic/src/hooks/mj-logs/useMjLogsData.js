@@ -73,15 +73,18 @@ export const useMjLogsData = () => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  let now = new Date();
-  const formInitValues = {
-    channel_id: '',
-    mj_id: '',
-    dateRange: [
-      timestamp2string(now.getTime() / 1000 - 2592000),
-      timestamp2string(now.getTime() / 1000 + 3600),
-    ],
+  const getDefaultFormValues = () => {
+    const now = new Date();
+    return {
+      channel_id: '',
+      mj_id: '',
+      dateRange: [
+        timestamp2string(now.getTime() / 1000 - 2592000),
+        timestamp2string(now.getTime() / 1000 + 3600),
+      ],
+    };
   };
+  const formInitValues = getDefaultFormValues();
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({});
@@ -182,9 +185,10 @@ export const useMjLogsData = () => {
   // Get form values helper function
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
+    const defaultValues = getDefaultFormValues();
 
-    let start_timestamp = timestamp2string(now.getTime() / 1000 - 2592000);
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
+    let start_timestamp = defaultValues.dateRange[0];
+    let end_timestamp = defaultValues.dateRange[1];
 
     if (
       formValues.dateRange &&
@@ -222,10 +226,10 @@ export const useMjLogsData = () => {
   };
 
   // Load logs function
-  const loadLogs = async (page = 1, size = pageSize) => {
+  const loadLogs = async (page = 1, size = pageSize, valuesOverride = null) => {
     setLoading(true);
     const { channel_id, mj_id, start_timestamp, end_timestamp } =
-      getFormValues();
+      valuesOverride || getFormValues();
     let localStartTimestamp = Date.parse(start_timestamp);
     let localEndTimestamp = Date.parse(end_timestamp);
     const url = isAdminUser
@@ -254,6 +258,19 @@ export const useMjLogsData = () => {
   // Refresh function
   const refresh = async () => {
     await loadLogs(1, pageSize);
+  };
+
+  const resetFilters = async () => {
+    const defaultValues = getDefaultFormValues();
+    if (formApi) {
+      formApi.setValues(defaultValues);
+    }
+    await loadLogs(1, pageSize, {
+      channel_id: '',
+      mj_id: '',
+      start_timestamp: defaultValues.dateRange[0],
+      end_timestamp: defaultValues.dateRange[1],
+    });
   };
 
   // Copy text function
@@ -326,6 +343,7 @@ export const useMjLogsData = () => {
     handlePageChange,
     handlePageSizeChange,
     refresh,
+    resetFilters,
     copyText,
     openContentModal,
     openImageModal,

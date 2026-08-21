@@ -54,6 +54,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     channel: '',
     data_export_default_time: '',
   });
+  const liveEndTimestampRef = useRef(true);
 
   const [dataExportDefaultTime, setDataExportDefaultTime] =
     useState(getDefaultTime());
@@ -156,6 +157,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       localStorage.setItem('data_export_default_time', value);
       return;
     }
+    if (name === 'end_timestamp') {
+      liveEndTimestampRef.current = false;
+    }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }, []);
 
@@ -168,11 +172,11 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, []);
 
   // ========== API 调用函数 ==========
-  const loadQuotaData = useCallback(async () => {
+  const loadQuotaData = useCallback(async (inputValues = inputs) => {
     setLoading(true);
     try {
       let url = '';
-      const { start_timestamp, end_timestamp, username } = inputs;
+      const { start_timestamp, end_timestamp, username } = inputValues;
       let localStartTimestamp = Date.parse(start_timestamp) / 1000;
       let localEndTimestamp = Date.parse(end_timestamp) / 1000;
 
@@ -191,7 +195,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
             count: 0,
             model_name: '无数据',
             quota: 0,
-            created_at: now.getTime() / 1000,
+            created_at: new Date().getTime() / 1000,
           });
         }
         data.sort((a, b) => a.created_at - b.created_at);
@@ -203,7 +207,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } finally {
       setLoading(false);
     }
-  }, [inputs, dataExportDefaultTime, isAdminUser, now]);
+  }, [inputs, dataExportDefaultTime, isAdminUser]);
 
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
@@ -247,8 +251,8 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [inputs, isAdminUser]);
 
   const loadTaskSummaryData = useCallback(
-    async () => {
-      const { start_timestamp, end_timestamp, username } = inputs;
+    async (inputValues = inputs) => {
+      const { start_timestamp, end_timestamp, username } = inputValues;
       const localStartTimestamp = Date.parse(start_timestamp) / 1000;
       const localEndTimestamp = Date.parse(end_timestamp) / 1000;
       if (isNaN(localStartTimestamp) || isNaN(localEndTimestamp)) {
@@ -291,11 +295,19 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [userDispatch]);
 
   const refresh = useCallback(async () => {
-    const data = await loadQuotaData();
-    await loadTaskSummaryData();
+    let refreshInputs = inputs;
+    if (liveEndTimestampRef.current) {
+      refreshInputs = {
+        ...inputs,
+        end_timestamp: timestamp2string(new Date().getTime() / 1000),
+      };
+      setInputs(refreshInputs);
+    }
+    const data = await loadQuotaData(refreshInputs);
+    await loadTaskSummaryData(refreshInputs);
     await loadUptimeData();
     return data;
-  }, [loadQuotaData, loadTaskSummaryData, loadUptimeData]);
+  }, [inputs, loadQuotaData, loadTaskSummaryData, loadUptimeData]);
 
   const handleSearchConfirm = useCallback(
     async (updateChartDataCallback) => {

@@ -27,8 +27,8 @@ const TaskLogsFilters = ({
   formInitValues,
   setFormApi,
   refresh,
+  resetFilters,
   setShowColumnSelector,
-  formApi,
   loading,
   isAdminUser,
   isRootUser,
@@ -132,15 +132,7 @@ const TaskLogsFilters = ({
             </Button>
             <Button
               type='tertiary'
-              onClick={() => {
-                if (formApi) {
-                  formApi.reset();
-                  // 重置后立即查询，使用setTimeout确保表单重置完成
-                  setTimeout(() => {
-                    refresh();
-                  }, 100);
-                }
-              }}
+              onClick={resetFilters}
               size='small'
             >
               {t('重置')}
