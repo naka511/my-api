@@ -87,7 +87,7 @@ export const useTaskLogsData = () => {
   // Form state
   const [formApi, setFormApi] = useState(null);
 
-  const getDefaultFormValues = () => {
+  const getDefaultFormValues = (endOffsetSeconds = 0) => {
     const now = new Date();
     const zeroNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     return {
@@ -97,7 +97,7 @@ export const useTaskLogsData = () => {
       username: '',
       dateRange: [
         timestamp2string(zeroNow.getTime() / 1000),
-        timestamp2string(now.getTime() / 1000),
+        timestamp2string(now.getTime() / 1000 + endOffsetSeconds),
       ],
     };
   };
@@ -281,7 +281,7 @@ export const useTaskLogsData = () => {
 
   // Reset filters with a fresh end time so newly created tasks are included.
   const resetFilters = async () => {
-    const defaultValues = getDefaultFormValues();
+    const defaultValues = getDefaultFormValues(3600);
     if (formApi) {
       formApi.setValues(defaultValues);
     }

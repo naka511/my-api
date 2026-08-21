@@ -98,7 +98,7 @@ export const useLogsData = () => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  const getDefaultFormValues = () => ({
+  const getDefaultFormValues = (endOffsetSeconds = 0) => ({
     username: '',
     token_name: '',
     model_name: '',
@@ -107,7 +107,7 @@ export const useLogsData = () => {
     request_id: '',
     dateRange: [
       timestamp2string(getTodayStartTimestamp()),
-      timestamp2string(new Date().getTime() / 1000),
+      timestamp2string(new Date().getTime() / 1000 + endOffsetSeconds),
     ],
     logType: '0',
   });
@@ -808,7 +808,7 @@ export const useLogsData = () => {
   };
 
   const resetFilters = async () => {
-    const defaultValues = getDefaultFormValues();
+    const defaultValues = getDefaultFormValues(3600);
     if (formApi) {
       formApi.setValues(defaultValues);
     }
