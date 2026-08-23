@@ -303,7 +303,7 @@ export const useDashboardCharts = (
   const [spec_user_rank, setSpecUserRank] = useState({
     type: 'bar',
     data: [{ id: 'userRankData', values: [] }],
-    xField: 'rawQuota',
+    xField: 'Usage',
     yField: 'User',
     seriesField: 'User',
     direction: 'horizontal',
@@ -590,6 +590,7 @@ export const useDashboardCharts = (
         User: item.User,
         rawQuota: item.Quota,
         Quota: getQuotaWithUnit(item.Quota, 4),
+        Usage: Number(getQuotaWithUnit(item.Quota, 4)),
       })).sort((a, b) => b.rawQuota - a.rawQuota);
 
       const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);

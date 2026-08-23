@@ -856,7 +856,7 @@ export function processUserChartData(
     spec_user_rank: {
       type: 'bar',
       data: [{ id: 'userRankData', values: rankValues }],
-      xField: 'rawQuota',
+      xField: 'Usage',
       yField: 'User',
       seriesField: 'User',
       direction: 'horizontal',
@@ -872,7 +872,8 @@ export function processUserChartData(
       label: {
         visible: true,
         position: 'outside',
-        formatMethod: (value: number) => formatVal(value),
+        formatMethod: (_value: number, datum: Record<string, unknown>) =>
+          formatVal(Number(datum?.rawQuota) || 0),
         style: { fontSize: 11 },
       },
       axes: [
