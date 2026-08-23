@@ -42,6 +42,19 @@ const USER_COLORS = [
   '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
 ];
 
+const formatQuotaTooltipContent = (previous = []) =>
+  previous.map((line) => {
+    const datum = Array.isArray(line?.datum) ? line.datum[0] : line?.datum;
+    const rawQuota = Number(datum?.rawQuota);
+    if (!Number.isFinite(rawQuota)) {
+      return line;
+    }
+    return {
+      ...line,
+      value: renderQuota(rawQuota, 4),
+    };
+  });
+
 export const useDashboardCharts = (
   dataExportDefaultTime,
   setTrendData,
@@ -323,6 +336,7 @@ export const useDashboardCharts = (
           key: (datum) => datum['User'],
           value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
         }],
+        updateContent: formatQuotaTooltipContent,
       },
     },
     color: { type: 'ordinal', range: USER_COLORS },
@@ -357,6 +371,7 @@ export const useDashboardCharts = (
           key: (datum) => datum['User'],
           value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
         }],
+        updateContent: formatQuotaTooltipContent,
       },
       dimension: {
         content: [{
