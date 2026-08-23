@@ -752,6 +752,13 @@ export function processUserChartData(
       : USER_COLOR_FALLBACKS
 
   const formatVal = (raw: number) => renderQuotaCompat(raw, 2)
+  const getQuotaDisplayValue = (raw: number) => {
+    const formatted = renderQuotaCompat(raw, 4)
+    const numeric = Number(
+      formatted.replace(/,/g, '').replace(/[^0-9.-]/g, '')
+    )
+    return Number.isFinite(numeric) ? numeric : Number((raw / quotaPerUnit).toFixed(4))
+  }
 
   const emptyResult: ProcessedUserChartData = {
     spec_user_rank: {
@@ -808,6 +815,7 @@ export function processUserChartData(
     User: username,
     rawQuota: quota,
     Usage: Number((quota / quotaPerUnit).toFixed(4)),
+    displayQuota: getQuotaDisplayValue(quota),
   }))
 
   const userColorMap = topUsers.reduce<Record<string, string>>(
@@ -856,7 +864,7 @@ export function processUserChartData(
     spec_user_rank: {
       type: 'bar',
       data: [{ id: 'userRankData', values: rankValues }],
-      xField: 'Usage',
+      xField: 'displayQuota',
       yField: 'User',
       seriesField: 'User',
       direction: 'horizontal',

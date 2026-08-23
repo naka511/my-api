@@ -55,6 +55,15 @@ const formatQuotaTooltipContent = (previous = []) =>
     };
   });
 
+const getQuotaDisplayValue = (quota) => {
+  const formatted = String(renderQuota(quota, 4));
+  const numeric = Number(formatted.replace(/,/g, '').replace(/[^0-9.-]/g, ''));
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  return Number(getQuotaWithUnit(quota, 4)) || 0;
+};
+
 export const useDashboardCharts = (
   dataExportDefaultTime,
   setTrendData,
@@ -303,7 +312,7 @@ export const useDashboardCharts = (
   const [spec_user_rank, setSpecUserRank] = useState({
     type: 'bar',
     data: [{ id: 'userRankData', values: [] }],
-    xField: 'Usage',
+    xField: 'displayQuota',
     yField: 'User',
     seriesField: 'User',
     direction: 'horizontal',
@@ -591,6 +600,7 @@ export const useDashboardCharts = (
         rawQuota: item.Quota,
         Quota: getQuotaWithUnit(item.Quota, 4),
         Usage: Number(getQuotaWithUnit(item.Quota, 4)),
+        displayQuota: getQuotaDisplayValue(item.Quota),
       })).sort((a, b) => b.rawQuota - a.rawQuota);
 
       const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);
