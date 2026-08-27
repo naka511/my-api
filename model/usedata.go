@@ -169,6 +169,16 @@ type dashboardAggregateRow struct {
 	Count     int
 }
 
+type dashboardTaskLogRow struct {
+	UserID    int
+	Username  string
+	ModelName string
+	CreatedAt int64
+	Type      int
+	Quota     int
+	Other     string
+}
+
 const (
 	dashboardTaskFlagPattern = `%"is_task":true%`
 	dashboardTaskIDPattern   = `%"task_id":%`
@@ -231,14 +241,85 @@ func GetActualQuotaData(userId int, username string, startTime int64, endTime in
 		return item
 	}
 
+	// Task billing logs are settled at the task level. Keep the task IDs from
+	// this time window so video task logs can be separated from legacy task
+	// logs (for example Midjourney refunds, which use a different task table).
+	taskLogQuery := LOG_DB.Table("logs").Select(
+		"user_id, username, model_name, created_at, type, quota, other",
+	).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("other LIKE ?", dashboardTaskIDPattern)
+	taskLogQuery, err := applyDashboardLogFilters(taskLogQuery, userId, username, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	var taskLogRows []dashboardTaskLogRow
+	if err := taskLogQuery.Find(&taskLogRows).Error; err != nil {
+		return nil, err
+	}
+
+	taskIDs := make([]string, 0, len(taskLogRows))
+	seenTaskIDs := make(map[string]struct{})
+	for _, row := range taskLogRows {
+		other, err := common.StrToMap(row.Other)
+		if err != nil {
+			continue
+		}
+		taskID, ok := other["task_id"].(string)
+		if !ok || taskID == "" {
+			continue
+		}
+		if _, ok := seenTaskIDs[taskID]; !ok {
+			seenTaskIDs[taskID] = struct{}{}
+			taskIDs = append(taskIDs, taskID)
+		}
+	}
+	// Query in small batches to stay below SQLite's bind-variable limit.
+	videoTaskIDs := make(map[string]struct{})
+	for start := 0; start < len(taskIDs); start += 500 {
+		end := start + 500
+		if end > len(taskIDs) {
+			end = len(taskIDs)
+		}
+		var tasks []Task
+		if err := DB.Model(&Task{}).Select("task_id").Where("task_id IN ?", taskIDs[start:end]).Find(&tasks).Error; err != nil {
+			return nil, err
+		}
+		for _, task := range tasks {
+			if task.TaskID != "" {
+				videoTaskIDs[task.TaskID] = struct{}{}
+			}
+		}
+	}
+
+	// Non-video task logs retain the old time-based net accounting.
+	for _, row := range taskLogRows {
+		other, err := common.StrToMap(row.Other)
+		if err != nil {
+			continue
+		}
+		taskID, ok := other["task_id"].(string)
+		if !ok || taskID == "" {
+			continue
+		}
+		if _, isVideoTask := videoTaskIDs[taskID]; isVideoTask {
+			continue
+		}
+		item := getData(row.UserID, row.Username, row.ModelName, row.CreatedAt)
+		if row.Type == LogTypeConsume {
+			item.Quota += row.Quota
+		} else if row.Type == LogTypeRefund {
+			item.Quota -= row.Quota
+		}
+	}
+
 	logQuery := LOG_DB.Table("logs").Select(
 		"user_id, username, model_name, created_at - (created_at % 3600) AS created_at, " +
 			"SUM(CASE WHEN type = ? THEN quota ELSE -quota END) AS quota, " +
 			"SUM(CASE WHEN type = ? AND (other IS NULL OR other = '' OR (other NOT LIKE ? AND other NOT LIKE ?)) " +
 				"THEN prompt_tokens + completion_tokens ELSE 0 END) AS token_used",
 		LogTypeConsume, LogTypeConsume, dashboardTaskFlagPattern, dashboardTaskIDPattern,
-	).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund})
-	var err error
+	).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("other IS NULL OR other = '' OR (other NOT LIKE ? AND other NOT LIKE ?)", dashboardTaskFlagPattern, dashboardTaskIDPattern)
 	logQuery, err = applyDashboardLogFilters(logQuery, userId, username, startTime, endTime)
 	if err != nil {
 		return nil, err
@@ -273,7 +354,7 @@ func GetActualQuotaData(userId int, username string, startTime int64, endTime in
 		item.Count += row.Count
 	}
 
-	taskQuery := DB.Model(&Task{}).Select("user_id, submit_time, created_at, properties").Where("status = ?", TaskStatusSuccess)
+	taskQuery := DB.Model(&Task{}).Select("user_id, submit_time, created_at, properties, quota").Where("status = ?", TaskStatusSuccess)
 	if userId != 0 {
 		taskQuery = taskQuery.Where("user_id = ?", userId)
 	}
@@ -327,6 +408,12 @@ func GetActualQuotaData(userId int, username string, startTime int64, endTime in
 		taskUsername := usernamesByID[task.UserId]
 		item := getData(task.UserId, taskUsername, dashboardTaskModelName(task), createdAt)
 		item.Count++
+		// Async task billing is settled on the task record. Attribute only the
+		// final successful charge to the submit-time bucket; failed tasks are
+		// fully refunded and therefore contribute no consumption.
+		if task.Quota > 0 {
+			item.Quota += task.Quota
+		}
 	}
 
 	result := make([]*QuotaData, 0, len(dataMap))
