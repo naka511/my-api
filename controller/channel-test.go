@@ -537,9 +537,26 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 func testVideoChannel(c *gin.Context, testUserID int, testModel string, tik time.Time) testResult {
 	seconds := "4"
 	size := "1280x720"
-	if strings.EqualFold(strings.TrimSpace(testModel), "minimax-h3") {
+	if common.IsMiniMaxH3Model(testModel) {
 		seconds = "5"
-		size = "2560x1440"
+		switch strings.ToLower(strings.TrimSpace(testModel)) {
+		case "minimax-h3-480p":
+			size = "856x480"
+		case "minimax-h3-768p":
+			size = "1376x768"
+		case "minimax-h3-4k":
+			size = "3840x2160"
+		default:
+			size = "2560x1440"
+		}
+	} else if common.IsWan30Model(testModel) {
+		seconds = "5"
+		switch strings.ToLower(strings.TrimSpace(testModel)) {
+		case "wan3.0-480p":
+			size = "854x480"
+		case "wan3.0-1080p":
+			size = "1920x1080"
+		}
 	}
 	jsonData, err := common.Marshal(relaycommon.TaskSubmitReq{
 		Model:   testModel,

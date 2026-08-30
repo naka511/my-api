@@ -67,6 +67,7 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  duration?: number
 }
 
 export interface ChatCompletionChunk {
@@ -117,6 +118,7 @@ export interface PlaygroundConfig {
   presence_penalty: number
   seed: number | null
   stream: boolean
+  duration: number
 }
 
 export interface ParameterEnabled {

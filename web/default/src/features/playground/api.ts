@@ -26,15 +26,34 @@ import type {
 } from './types'
 
 export function isVideoGenerationModel(model: string): boolean {
-  const normalized = model.toLowerCase()
+  const normalized = model.trim().toLowerCase()
   return (
     normalized.includes('sora2') ||
     normalized.includes('sora-2') ||
     normalized.includes('video-2.0') ||
     normalized.includes('video-2.5') ||
+    ['wan3.0-480p', 'wan3.0-720p', 'wan3.0-1080p'].includes(normalized) ||
     normalized.includes('ko3') ||
-    normalized.includes('minimax-h3')
+    [
+      'minimax-h3-480p',
+      'minimax-h3-768p',
+      'minimax-h3-2k',
+      'minimax-h3-4k',
+    ].includes(normalized)
   )
+}
+
+function getMiniMaxH3Size(model: string): string {
+  switch (model.toLowerCase()) {
+    case 'minimax-h3-480p':
+      return '856x480'
+    case 'minimax-h3-768p':
+      return '1376x768'
+    case 'minimax-h3-4k':
+      return '3840x2160'
+    default:
+      return '2560x1440'
+  }
 }
 
 function extractVideoPrompt(payload: ChatCompletionRequest): string {
@@ -53,20 +72,57 @@ function extractVideoPrompt(payload: ChatCompletionRequest): string {
   return textParts.join('\n') || 'Generate a short cinematic video.'
 }
 
+function extractVideoImageURLs(payload: ChatCompletionRequest): string[] {
+  const userMessages = payload.messages.filter((message) => message.role === 'user')
+  const urls: string[] = []
+  for (const message of userMessages) {
+    if (typeof message.content === 'string') continue
+    for (const part of message.content) {
+      if (part.type === 'image_url' && part.image_url?.url) {
+        urls.push(part.image_url.url)
+      }
+    }
+  }
+  return [...new Set(urls)]
+}
+
 export async function sendVideoGeneration(
   payload: ChatCompletionRequest
 ): Promise<Record<string, unknown>> {
-  const isMiniMaxH3 = payload.model.toLowerCase() === 'minimax-h3'
-  const isVideo25480p = payload.model.toLowerCase() === 'video-2.5-480p'
+  const model = payload.model.trim().toLowerCase()
+  const isMiniMaxH3 = [
+    'minimax-h3-480p',
+    'minimax-h3-768p',
+    'minimax-h3-2k',
+    'minimax-h3-4k',
+  ].includes(model)
+  const isVideo25480p = model === 'video-2.5-480p'
+  const isWan30 = ['wan3.0-480p', 'wan3.0-720p', 'wan3.0-1080p'].includes(model)
+  const imageURLs = extractVideoImageURLs(payload)
+  const videoBody: Record<string, unknown> = {
+    model: payload.model,
+    group: payload.group,
+    prompt: extractVideoPrompt(payload),
+    seconds: String(payload.duration || (isMiniMaxH3 || isWan30 ? 5 : 4)),
+    size: isMiniMaxH3
+      ? getMiniMaxH3Size(model)
+      : isVideo25480p
+        ? '864x496'
+        : model === 'wan3.0-480p'
+          ? '854x480'
+          : model === 'wan3.0-1080p'
+            ? '1920x1080'
+            : '1280x720',
+  }
+  if (imageURLs.length === 1) {
+    videoBody.image_url = imageURLs[0]
+    videoBody.input_reference = imageURLs[0]
+  } else if (imageURLs.length > 1) {
+    videoBody.image_urls = imageURLs
+  }
   const res = await api.post(
     API_ENDPOINTS.VIDEO_GENERATIONS,
-    {
-      model: payload.model,
-      group: payload.group,
-      prompt: extractVideoPrompt(payload),
-      seconds: isMiniMaxH3 ? '5' : '4',
-      size: isMiniMaxH3 ? '2560x1440' : isVideo25480p ? '864x496' : '1280x720',
-    },
+    videoBody,
     {
       skipErrorHandler: true,
     } as Record<string, unknown>

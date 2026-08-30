@@ -687,7 +687,13 @@ type TaskRelayInfo struct {
 }
 
 type TaskMediaReference struct {
-	URL string `json:"url"`
+	URL      string `json:"url"`
+	Duration int    `json:"duration,omitempty"`
+}
+
+type TaskImageGuidance struct {
+	URL      string  `json:"url"`
+	Strength float64 `json:"strength,omitempty"`
 }
 
 type TaskSubmitReq struct {
@@ -698,8 +704,11 @@ type TaskSubmitReq struct {
 	ImageURL        string                 `json:"image_url,omitempty"`
 	Images          []string               `json:"images,omitempty"`
 	ImageURLs       []string               `json:"image_urls,omitempty"`
+	ImageGuidance   []TaskImageGuidance    `json:"image_guidance,omitempty"`
 	StartImageURL   string                 `json:"start_image_url,omitempty"`
 	EndImageURL     string                 `json:"end_image_url,omitempty"`
+	StartFrame      []TaskMediaReference   `json:"start_frame,omitempty"`
+	EndFrame        []TaskMediaReference   `json:"end_frame,omitempty"`
 	VideoURL        string                 `json:"video_url,omitempty"`
 	VideoReference  []TaskMediaReference   `json:"video_reference,omitempty"`
 	AudioURL        string                 `json:"audio_url,omitempty"`
@@ -707,6 +716,8 @@ type TaskSubmitReq struct {
 	AspectRatio     string                 `json:"aspect_ratio,omitempty"`
 	Resolution      string                 `json:"resolution,omitempty"`
 	Size            string                 `json:"size,omitempty"`
+	Width           int                    `json:"width,omitempty"`
+	Height          int                    `json:"height,omitempty"`
 	Duration        int                    `json:"duration,omitempty"`
 	Seconds         string                 `json:"seconds,omitempty"`
 	InputReference  string                 `json:"input_reference,omitempty"`
@@ -718,7 +729,7 @@ func (t *TaskSubmitReq) GetPrompt() string {
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0 || len(t.ImageURLs) > 0 || t.ImageURL != "" || t.StartImageURL != "" || t.EndImageURL != ""
+	return len(t.Images) > 0 || len(t.ImageURLs) > 0 || len(t.ImageGuidance) > 0 || len(t.StartFrame) > 0 || len(t.EndFrame) > 0 || t.ImageURL != "" || t.StartImageURL != "" || t.EndImageURL != ""
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
@@ -729,8 +740,10 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	}
 
 	durationRaw := raw["duration"]
+	secondsRaw := raw["seconds"]
 	metadataRaw := raw["metadata"]
 	delete(raw, "duration")
+	delete(raw, "seconds")
 	delete(raw, "metadata")
 
 	cleanData, err := common.Marshal(raw)
@@ -750,6 +763,23 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 			if err := common.Unmarshal(durationRaw, &durationStr); err == nil && durationStr != "" {
 				if v, err := strconv.Atoi(durationStr); err == nil {
 					t.Duration = v
+				}
+			}
+		}
+	}
+
+	if len(secondsRaw) > 0 {
+		var secondsStr string
+		if err := common.Unmarshal(secondsRaw, &secondsStr); err == nil {
+			t.Seconds = secondsStr
+		} else {
+			var secondsInt int
+			if err := common.Unmarshal(secondsRaw, &secondsInt); err == nil {
+				t.Seconds = strconv.Itoa(secondsInt)
+			} else {
+				var secondsFloat float64
+				if err := common.Unmarshal(secondsRaw, &secondsFloat); err == nil {
+					t.Seconds = strconv.FormatFloat(secondsFloat, 'f', -1, 64)
 				}
 			}
 		}

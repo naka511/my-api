@@ -16,11 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { getUserModels, getUserGroups } from './api'
+import { getUserModels, getUserGroups, isVideoGenerationModel } from './api'
+import { getVideoDurationOptions } from './constants'
 import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
 import { usePlaygroundState, useChatHandler } from './hooks'
@@ -40,6 +41,14 @@ export function Playground() {
     setGroups,
     updateConfig,
   } = usePlaygroundState()
+
+  const durationOptions = useMemo(
+    () =>
+      isVideoGenerationModel(config.model)
+        ? getVideoDurationOptions(config.model)
+        : [],
+    [config.model]
+  )
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -98,6 +107,12 @@ export function Playground() {
       updateConfig('model', modelsData[0].value)
     }
   }, [modelsData, config.model, setModels, updateConfig])
+
+  useEffect(() => {
+    if (durationOptions.length > 0 && !durationOptions.includes(config.duration)) {
+      updateConfig('duration', durationOptions[0])
+    }
+  }, [config.duration, durationOptions, updateConfig])
 
   // Update groups when data changes
   useEffect(() => {
@@ -218,6 +233,9 @@ export function Playground() {
           models={models}
           onGroupChange={(value) => updateConfig('group', value)}
           onModelChange={(value) => updateConfig('model', value)}
+          durationValue={config.duration}
+          durationOptions={durationOptions}
+          onDurationChange={(value) => updateConfig('duration', value)}
           onStop={stopGeneration}
           onSubmit={handleSendMessage}
         />

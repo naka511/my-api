@@ -5,6 +5,16 @@ type SubjectReference struct {
 	Image []string `json:"image"` // Array of subject reference images (currently only supports single image)
 }
 
+type MediaReference struct {
+	URL      string `json:"url"`
+	Duration int    `json:"duration,omitempty"`
+}
+
+type ImageGuidance struct {
+	URL      string  `json:"url"`
+	Strength float64 `json:"strength,omitempty"`
+}
+
 type VideoRequest struct {
 	Model            string             `json:"model"`
 	Prompt           string             `json:"prompt,omitempty"`
@@ -16,9 +26,15 @@ type VideoRequest struct {
 	Height           int                `json:"height,omitempty"`
 	ImageURL         string             `json:"image_url,omitempty"`
 	ImageURLs        []string           `json:"image_urls,omitempty"`
+	ImageGuidance    []ImageGuidance    `json:"image_guidance,omitempty"`
 	StartImageURL    string             `json:"start_image_url,omitempty"`
 	EndImageURL      string             `json:"end_image_url,omitempty"`
+	StartFrame       []MediaReference   `json:"start_frame,omitempty"`
+	EndFrame         []MediaReference   `json:"end_frame,omitempty"`
+	VideoURL         string             `json:"video_url,omitempty"`
+	VideoReference   []MediaReference   `json:"video_reference,omitempty"`
 	AudioURL         string             `json:"audio_url,omitempty"`
+	AudioReference   []MediaReference   `json:"audio_reference,omitempty"`
 	CallbackURL      string             `json:"callback_url,omitempty"`
 	AigcWatermark    *bool              `json:"aigc_watermark,omitempty"`
 	FirstFrameImage  string             `json:"first_frame_image,omitempty"` // For image-to-video and start-end-to-video
@@ -160,11 +176,35 @@ func GetModelConfig(model string) ModelConfig {
 			HasPromptOptimizer:   true,
 			HasFastPretreatment:  false,
 		},
-		ModelMiniMaxH3: {
-			Name:                 ModelMiniMaxH3,
+		ModelMiniMaxH3480P: {
+			Name:                 ModelMiniMaxH3480P,
+			DefaultResolution:    Resolution480P,
+			SupportedDurations:   []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			SupportedResolutions: []string{Resolution480P},
+			HasPromptOptimizer:   false,
+			HasFastPretreatment:  false,
+		},
+		ModelMiniMaxH3768P: {
+			Name:                 ModelMiniMaxH3768P,
+			DefaultResolution:    Resolution768P,
+			SupportedDurations:   []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			SupportedResolutions: []string{Resolution768P},
+			HasPromptOptimizer:   false,
+			HasFastPretreatment:  false,
+		},
+		ModelMiniMaxH32K: {
+			Name:                 ModelMiniMaxH32K,
 			DefaultResolution:    Resolution2K,
 			SupportedDurations:   []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 			SupportedResolutions: []string{Resolution2K},
+			HasPromptOptimizer:   false,
+			HasFastPretreatment:  false,
+		},
+		ModelMiniMaxH34K: {
+			Name:                 ModelMiniMaxH34K,
+			DefaultResolution:    Resolution4K,
+			SupportedDurations:   []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			SupportedResolutions: []string{Resolution4K},
 			HasPromptOptimizer:   false,
 			HasFastPretreatment:  false,
 		},

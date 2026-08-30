@@ -100,9 +100,13 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	modelName, _ := body["model"].(string)
 	defaultSeconds := "4"
 	defaultSize := "1280x720"
+	explicitSize := false
 	if isMiniMaxH3Model(modelName) {
 		defaultSeconds = "5"
-		defaultSize = "2560x1440"
+		defaultSize = miniMaxH3SizeForAspectRatio(modelName, "16:9")
+	} else if isWan30Model(modelName) {
+		defaultSeconds = "5"
+		defaultSize = wan30PlaygroundSize(modelName, "16:9")
 	} else if strings.EqualFold(strings.TrimSpace(modelName), "video-2.5-480p") {
 		defaultSize = "864x496"
 	}
@@ -126,9 +130,10 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	}
 	if size, ok := body["size"]; ok {
 		videoBody["size"] = size
+		explicitSize = true
 	}
 	if size, ok := videoBody["size"].(string); ok && isMiniMaxH3Model(modelName) {
-		videoBody["size"] = normalizeMiniMaxH3SizeValue(size)
+		videoBody["size"] = normalizeMiniMaxH3SizeValue(modelName, size)
 	}
 	if _, hasImageURL := videoBody["image_url"]; !hasImageURL {
 		if _, hasImageURLs := videoBody["image_urls"]; !hasImageURLs {
@@ -160,13 +165,42 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		"video_reference",
 		"audio_url",
 		"audio_reference",
+		"image_guidance",
+		"start_frame",
+		"end_frame",
+		"width",
+		"height",
 	} {
 		if value, ok := body[key]; ok {
 			videoBody[key] = value
 		}
 	}
+	if isWan30Model(modelName) && !explicitSize {
+		aspectRatio, _ := videoBody["aspect_ratio"].(string)
+		if size := wan30PlaygroundSize(modelName, aspectRatio); size != "" {
+			videoBody["size"] = size
+		}
+	}
+	if isMiniMaxH3Model(modelName) && !explicitSize {
+		aspectRatio, _ := videoBody["aspect_ratio"].(string)
+		if size := miniMaxH3SizeForAspectRatio(modelName, aspectRatio); size != "" {
+			videoBody["size"] = size
+		}
+	}
 	normalizeVideo25AsyncOutput(videoBody, modelName)
 	return videoBody
+}
+
+func wan30PlaygroundSize(modelName string, aspectRatio string) string {
+	modelSizes := map[string]map[string]string{
+		"wan3.0-480p":  {"16:9": "854x480", "4:3": "736x552", "1:1": "640x640", "3:4": "552x736", "9:16": "480x854"},
+		"wan3.0-720p":  {"16:9": "1280x720", "4:3": "1104x828", "1:1": "960x960", "3:4": "828x1104", "9:16": "720x1280"},
+		"wan3.0-1080p": {"16:9": "1920x1080", "4:3": "1656x1242", "1:1": "1440x1440", "3:4": "1242x1656", "9:16": "1080x1920"},
+	}
+	if strings.TrimSpace(aspectRatio) == "" {
+		aspectRatio = "16:9"
+	}
+	return modelSizes[strings.ToLower(strings.TrimSpace(modelName))][strings.TrimSpace(aspectRatio)]
 }
 
 func normalizeVideoSeconds(value any, fallback string) string {

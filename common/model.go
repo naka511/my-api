@@ -32,7 +32,13 @@ var (
 		"kling-v3",
 		"grok-imagine-video",
 		"ko3",
-		"minimax-h3",
+		"minimax-h3-480p",
+		"minimax-h3-768p",
+		"minimax-h3-2k",
+		"minimax-h3-4k",
+		"wan3.0-480p",
+		"wan3.0-720p",
+		"wan3.0-1080p",
 	}
 	OpenAITextModels = []string{
 		"gpt-",
@@ -46,6 +52,39 @@ var (
 func IsOpenAIResponseOnlyModel(modelName string) bool {
 	for _, m := range OpenAIResponseOnlyModels {
 		if strings.Contains(modelName, m) {
+			return true
+		}
+	}
+	return false
+}
+
+var MiniMaxH3Models = []string{
+	"minimax-h3-480p",
+	"minimax-h3-768p",
+	"minimax-h3-2k",
+	"minimax-h3-4k",
+}
+
+func IsMiniMaxH3Model(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	for _, model := range MiniMaxH3Models {
+		if normalized == model {
+			return true
+		}
+	}
+	return false
+}
+
+var Wan30Models = []string{
+	"wan3.0-480p",
+	"wan3.0-720p",
+	"wan3.0-1080p",
+}
+
+func IsWan30Model(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	for _, model := range Wan30Models {
+		if normalized == model {
 			return true
 		}
 	}

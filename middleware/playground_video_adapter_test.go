@@ -71,16 +71,29 @@ func TestPlaygroundVideoRequestConvert(t *testing.T) {
 			},
 		},
 		{
-			name:         "minimax h3 uses supported 2k size",
+			name:         "minimax h3 2k uses supported size",
 			path:         "/pg/video/generations",
-			body:         `{"model":"minimax-h3","duration":5,"size":"1280x720","messages":[{"role":"user","content":"h3 video"}]}`,
+			body:         `{"model":"minimax-h3-2k","duration":5,"size":"1280x720","messages":[{"role":"user","content":"h3 video"}]}`,
 			expectedPath: "/v1/video/generations",
 			expectedBody: map[string]any{
-				"model":    "minimax-h3",
+				"model":    "minimax-h3-2k",
 				"prompt":   "h3 video",
 				"duration": float64(5),
 				"seconds":  "5",
 				"size":     "2560x1440",
+			},
+		},
+		{
+			name:         "minimax h3 480p uses supported size",
+			path:         "/pg/video/generations",
+			body:         `{"model":"minimax-h3-480p","duration":5,"size":"2560x1440","messages":[{"role":"user","content":"h3 480p video"}]}`,
+			expectedPath: "/v1/video/generations",
+			expectedBody: map[string]any{
+				"model":    "minimax-h3-480p",
+				"prompt":   "h3 480p video",
+				"duration": float64(5),
+				"seconds":  "5",
+				"size":     "856x480",
 			},
 		},
 		{

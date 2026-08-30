@@ -31,6 +31,7 @@ import {
   NotepadTextIcon,
   CodeSquareIcon,
   GraduationCapIcon,
+  TimerIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -48,6 +49,13 @@ import {
   PromptInputTools,
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 import type { ModelOption, GroupOption } from '../types'
@@ -64,6 +72,9 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
+  durationValue: number
+  durationOptions: number[]
+  onDurationChange: (value: number) => void
 }
 
 const suggestions = [
@@ -87,6 +98,9 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
+  durationValue,
+  durationOptions,
+  onDurationChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -183,6 +197,33 @@ export function PlaygroundInput({
           </PromptInputTools>
 
           <div className='flex items-center gap-1.5 md:gap-2'>
+            {durationOptions.length > 0 && (
+              <Select
+                items={durationOptions.map((duration) => ({
+                  value: String(duration),
+                  label: `${duration} ${t('seconds')}`,
+                }))}
+                value={String(durationValue)}
+                onValueChange={(value) => {
+                  if (value) onDurationChange(Number(value))
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t('Video length in seconds')}
+                  className='h-8 w-[82px] px-2 text-xs'
+                >
+                  <TimerIcon className='size-3.5' />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {durationOptions.map((duration) => (
+                    <SelectItem key={duration} value={String(duration)}>
+                      {duration} {t('seconds')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <ModelGroupSelector
               selectedModel={modelValue}
               models={models}

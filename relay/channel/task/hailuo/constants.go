@@ -2,11 +2,18 @@ package hailuo
 
 const (
 	ChannelName = "hailuo-video"
-	ModelMiniMaxH3 = "minimax-h3"
+	UpstreamModelMiniMaxH3 = "minimax-h3"
+	ModelMiniMaxH3480P     = "minimax-h3-480p"
+	ModelMiniMaxH3768P     = "minimax-h3-768p"
+	ModelMiniMaxH32K       = "minimax-h3-2k"
+	ModelMiniMaxH34K       = "minimax-h3-4k"
 )
 
 var ModelList = []string{
-	ModelMiniMaxH3,
+	ModelMiniMaxH3480P,
+	ModelMiniMaxH3768P,
+	ModelMiniMaxH32K,
+	ModelMiniMaxH34K,
 	"MiniMax-Hailuo-2.3",
 	"MiniMax-Hailuo-2.3-Fast",
 	"MiniMax-Hailuo-02",
@@ -42,11 +49,13 @@ const (
 )
 
 const (
+	Resolution480P  = "480P"
 	Resolution512P  = "512P"
 	Resolution720P  = "720P"
 	Resolution768P  = "768P"
 	Resolution1080P = "1080P"
 	Resolution2K    = "2K"
+	Resolution4K    = "4K"
 )
 
 const (

@@ -30,9 +30,9 @@ func TestNormalizeAsyncVideoRequestForSora2(t *testing.T) {
 	require.Equal(t, "https://example.com/reference.png", body["input_reference"])
 }
 
-func TestNormalizeAsyncVideoRequestForMiniMaxH3(t *testing.T) {
+func TestNormalizeAsyncVideoRequestForMiniMaxH32K(t *testing.T) {
 	body := map[string]any{
-		"model":        "minimax-h3",
+		"model":        "minimax-h3-2k",
 		"prompt":       "test",
 		"duration":     float64(5),
 		"aspect_ratio": "16:9",
@@ -41,7 +41,7 @@ func TestNormalizeAsyncVideoRequestForMiniMaxH3(t *testing.T) {
 
 	normalizeAsyncVideoRequest(body)
 
-	require.Equal(t, "minimax-h3", body["model"])
+	require.Equal(t, "minimax-h3-2k", body["model"])
 	require.Equal(t, "5", body["seconds"])
 	require.Equal(t, "2560x1440", body["size"])
 }

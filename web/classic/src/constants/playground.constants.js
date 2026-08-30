@@ -104,6 +104,15 @@ export const VIDEO_MODEL_CONFIG = {
   'video-2.5-480p': {
     durations: createDurationRange(4, 30),
   },
+  'wan3.0-480p': {
+    durations: createDurationRange(2, 30),
+  },
+  'wan3.0-720p': {
+    durations: createDurationRange(2, 30),
+  },
+  'wan3.0-1080p': {
+    durations: createDurationRange(2, 30),
+  },
   sora2: {
     durations: [4, 8, 12],
   },
@@ -125,7 +134,16 @@ export const VIDEO_MODEL_CONFIG = {
   ko3: {
     durations: [4, 8, 12],
   },
-  'minimax-h3': {
+  'minimax-h3-480p': {
+    durations: createDurationRange(5, 15),
+  },
+  'minimax-h3-768p': {
+    durations: createDurationRange(5, 15),
+  },
+  'minimax-h3-2k': {
+    durations: createDurationRange(5, 15),
+  },
+  'minimax-h3-4k': {
     durations: createDurationRange(5, 15),
   },
 };

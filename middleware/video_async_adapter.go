@@ -77,6 +77,9 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 		} else if isVideo25Model(modelName) {
 			body["seconds"] = defaultSeconds
 			body["duration"] = 4
+		} else if isWan30Model(modelName) {
+			body["seconds"] = defaultSeconds
+			body["duration"] = 5
 		}
 	} else {
 		body["seconds"] = normalizeVideoSeconds(body["seconds"], defaultSeconds)
@@ -90,7 +93,7 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 		}
 	}
 	if size, ok := body["size"].(string); ok && isMiniMaxH3Model(modelName) {
-		body["size"] = normalizeMiniMaxH3SizeValue(size)
+		body["size"] = normalizeMiniMaxH3SizeValue(modelName, size)
 	}
 	normalizeVideo25AsyncOutput(body, modelName)
 
@@ -102,7 +105,11 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 }
 
 func isMiniMaxH3Model(model string) bool {
-	return strings.EqualFold(strings.TrimSpace(model), "minimax-h3")
+	return common.IsMiniMaxH3Model(model)
+}
+
+func isWan30Model(model string) bool {
+	return common.IsWan30Model(model)
 }
 
 func isVideo25Model(model string) bool {
@@ -170,21 +177,16 @@ func video25AspectRatioFromSize(size string) string {
 }
 
 func defaultVideoSizeForAspectRatio(model string, aspectRatio string) string {
-	if isMiniMaxH3Model(model) {
-		switch strings.TrimSpace(aspectRatio) {
-		case "9:16":
-			return "1440x2560"
-		case "1:1":
-			return "1440x1440"
-		case "4:3":
-			return "1920x1440"
-		case "3:4":
-			return "1440x1920"
-		case "21:9":
-			return "3360x1440"
-		default:
-			return "2560x1440"
+	if isWan30Model(model) {
+		modelSizes := map[string]map[string]string{
+			"wan3.0-480p":  {"16:9": "854x480", "4:3": "736x552", "1:1": "640x640", "3:4": "552x736", "9:16": "480x854"},
+			"wan3.0-720p":  {"16:9": "1280x720", "4:3": "1104x828", "1:1": "960x960", "3:4": "828x1104", "9:16": "720x1280"},
+			"wan3.0-1080p": {"16:9": "1920x1080", "4:3": "1656x1242", "1:1": "1440x1440", "3:4": "1242x1656", "9:16": "1080x1920"},
 		}
+		return modelSizes[strings.ToLower(strings.TrimSpace(model))][strings.TrimSpace(aspectRatio)]
+	}
+	if isMiniMaxH3Model(model) {
+		return miniMaxH3SizeForAspectRatio(model, aspectRatio)
 	}
 
 	switch strings.TrimSpace(aspectRatio) {
@@ -197,21 +199,46 @@ func defaultVideoSizeForAspectRatio(model string, aspectRatio string) string {
 	}
 }
 
-func normalizeMiniMaxH3SizeValue(size string) string {
-	switch strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x"))) {
-	case "1280x720", "1920x1080", "2560x1440":
-		return "2560x1440"
-	case "720x1280", "1080x1920", "1440x2560":
-		return "1440x2560"
-	case "1024x1024", "1440x1440":
-		return "1440x1440"
-	case "1440x1080", "1920x1440":
-		return "1920x1440"
-	case "1080x1440", "1440x1920":
-		return "1440x1920"
-	case "3360x1440":
-		return "3360x1440"
-	default:
+func normalizeMiniMaxH3SizeValue(model, size string) string {
+	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x")))
+	aspectRatio := miniMaxH3AspectRatioFromSize(normalized)
+	if aspectRatio == "" {
 		return size
+	}
+	if normalizedSize := miniMaxH3SizeForAspectRatio(model, aspectRatio); normalizedSize != "" {
+		return normalizedSize
+	}
+	return size
+}
+
+func miniMaxH3SizeForAspectRatio(model, aspectRatio string) string {
+	sizes := map[string]map[string]string{
+		"minimax-h3-480p": {"16:9": "856x480", "9:16": "480x856", "1:1": "480x480", "4:3": "640x480", "3:4": "480x640", "21:9": "1120x480"},
+		"minimax-h3-768p": {"16:9": "1376x768", "9:16": "768x1376", "1:1": "768x768", "4:3": "1024x768", "3:4": "768x1024", "21:9": "1792x768"},
+		"minimax-h3-2k":   {"16:9": "2560x1440", "9:16": "1440x2560", "1:1": "1440x1440", "4:3": "1920x1440", "3:4": "1440x1920", "21:9": "3360x1440"},
+		"minimax-h3-4k":   {"16:9": "3840x2160", "9:16": "2160x3840", "1:1": "2160x2160", "4:3": "2880x2160", "3:4": "2160x2880", "21:9": "5040x2160"},
+	}
+	if strings.TrimSpace(aspectRatio) == "" {
+		aspectRatio = "16:9"
+	}
+	return sizes[strings.ToLower(strings.TrimSpace(model))][strings.TrimSpace(aspectRatio)]
+}
+
+func miniMaxH3AspectRatioFromSize(size string) string {
+	switch size {
+	case "856x480", "1376x768", "2560x1440", "3840x2160", "1280x720", "1920x1080":
+		return "16:9"
+	case "480x856", "768x1376", "1440x2560", "2160x3840", "720x1280", "1080x1920":
+		return "9:16"
+	case "480x480", "768x768", "1440x1440", "2160x2160", "1024x1024":
+		return "1:1"
+	case "640x480", "1024x768", "1920x1440", "2880x2160", "1440x1080":
+		return "4:3"
+	case "480x640", "768x1024", "1440x1920", "2160x2880", "1080x1440":
+		return "3:4"
+	case "1120x480", "1792x768", "3360x1440", "5040x2160":
+		return "21:9"
+	default:
+		return ""
 	}
 }

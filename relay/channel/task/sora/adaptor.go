@@ -117,6 +117,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 		}
 	}
+	if isWan30Model(modelName) {
+		validationReq := req
+		validationReq.Model = modelName
+		if err := validateWan30Request(&validationReq); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+	}
 	return nil
 }
 
@@ -187,6 +194,162 @@ func validateVideo25Request(req *relaycommon.TaskSubmitReq) error {
 	return nil
 }
 
+func normalizeWan30AsyncVideoBody(body map[string]interface{}) {
+	modelName, _ := body["model"].(string)
+	if !isWan30Model(modelName) {
+		return
+	}
+	if _, hasDuration := body["duration"]; !hasDuration {
+		if _, hasSeconds := body["seconds"]; !hasSeconds {
+			body["duration"] = 5
+		}
+	}
+	if _, hasWidth := body["width"]; hasWidth {
+		return
+	}
+	if _, hasHeight := body["height"]; hasHeight {
+		return
+	}
+	if size, ok := body["size"].(string); ok && strings.TrimSpace(size) != "" {
+		return
+	}
+	aspectRatio, _ := body["aspect_ratio"].(string)
+	aspectRatio = strings.TrimSpace(aspectRatio)
+	if aspectRatio == "" {
+		aspectRatio = "16:9"
+		body["aspect_ratio"] = aspectRatio
+	}
+	if size := wan30SizeForAspectRatio(modelName, aspectRatio); size != "" {
+		body["size"] = size
+	}
+}
+
+func validateWan30Request(req *relaycommon.TaskSubmitReq) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+	if utf8.RuneCountInString(req.Prompt) > 5000 {
+		return fmt.Errorf("prompt must not exceed 5000 characters")
+	}
+
+	duration := req.Duration
+	if duration == 0 && strings.TrimSpace(req.Seconds) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(req.Seconds))
+		if err != nil {
+			return fmt.Errorf("duration must be an integer between 2 and 30")
+		}
+		duration = parsed
+	}
+	if duration != 0 && (duration < 2 || duration > 30) {
+		return fmt.Errorf("duration must be between 2 and 30 seconds")
+	}
+
+	aspectRatio := strings.TrimSpace(req.AspectRatio)
+	if aspectRatio != "" {
+		switch aspectRatio {
+		case "16:9", "4:3", "1:1", "3:4", "9:16":
+		default:
+			return fmt.Errorf("aspect_ratio must be one of 16:9, 4:3, 1:1, 3:4, or 9:16")
+		}
+	}
+	if (req.Width == 0) != (req.Height == 0) {
+		return fmt.Errorf("width and height must be provided together")
+	}
+	if req.Width < 0 || req.Height < 0 {
+		return fmt.Errorf("width and height must be positive")
+	}
+	if req.Width == 0 && req.Height == 0 && req.Size != "" && !wan30SizeAllowed(req.Model, req.Size) {
+		return fmt.Errorf("size %s is invalid for model %s", req.Size, req.Model)
+	}
+
+	imageCount := len(req.Images) + len(req.ImageURLs)
+	if strings.TrimSpace(req.ImageURL) != "" || strings.TrimSpace(req.Image) != "" {
+		imageCount++
+	}
+	imageCount += len(req.ImageGuidance)
+	if strings.TrimSpace(req.StartImageURL) != "" {
+		imageCount++
+	}
+	if strings.TrimSpace(req.EndImageURL) != "" {
+		imageCount++
+	}
+	if imageCount > 10 {
+		return fmt.Errorf("image references support at most 10 images")
+	}
+	for _, reference := range req.ImageGuidance {
+		if strings.TrimSpace(reference.URL) == "" {
+			return fmt.Errorf("image_guidance url must not be empty")
+		}
+	}
+	for _, frame := range append(append([]relaycommon.TaskMediaReference{}, req.StartFrame...), req.EndFrame...) {
+		if strings.TrimSpace(frame.URL) == "" {
+			return fmt.Errorf("frame url must not be empty")
+		}
+	}
+	if err := validateWan30MediaReferences(req.VideoURL, req.VideoReference, 5, 15, "video"); err != nil {
+		return err
+	}
+	if err := validateWan30MediaReferences(req.AudioURL, req.AudioReference, 5, 15, "audio"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateWan30MediaReferences(singleURL string, references []relaycommon.TaskMediaReference, maxCount int, maxTotalDuration int, kind string) error {
+	count := len(references)
+	if strings.TrimSpace(singleURL) != "" {
+		count++
+	}
+	if count > maxCount {
+		return fmt.Errorf("%s references support at most %d files", kind, maxCount)
+	}
+	totalDuration := 0
+	for _, reference := range references {
+		if strings.TrimSpace(reference.URL) == "" {
+			return fmt.Errorf("%s_reference url must not be empty", kind)
+		}
+		if reference.Duration != 0 && (reference.Duration < 1 || reference.Duration > maxTotalDuration) {
+			return fmt.Errorf("%s reference duration must be between 1 and %d seconds", kind, maxTotalDuration)
+		}
+		totalDuration += reference.Duration
+	}
+	if totalDuration > maxTotalDuration {
+		return fmt.Errorf("total %s reference duration must not exceed %d seconds", kind, maxTotalDuration)
+	}
+	return nil
+}
+
+func isWan30Model(modelName string) bool {
+	return common.IsWan30Model(modelName)
+}
+
+func wan30SizeForAspectRatio(modelName string, aspectRatio string) string {
+	return wan30ModelSizes(modelName)[strings.TrimSpace(aspectRatio)]
+}
+
+func wan30SizeAllowed(modelName string, size string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x")))
+	for _, candidate := range wan30ModelSizes(modelName) {
+		if candidate == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func wan30ModelSizes(modelName string) map[string]string {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "wan3.0-480p":
+		return map[string]string{"16:9": "854x480", "4:3": "736x552", "1:1": "640x640", "3:4": "552x736", "9:16": "480x854"}
+	case "wan3.0-720p":
+		return map[string]string{"16:9": "1280x720", "4:3": "1104x828", "1:1": "960x960", "3:4": "828x1104", "9:16": "720x1280"}
+	case "wan3.0-1080p":
+		return map[string]string{"16:9": "1920x1080", "4:3": "1656x1242", "1:1": "1440x1440", "3:4": "1242x1656", "9:16": "1080x1920"}
+	default:
+		return map[string]string{}
+	}
+}
+
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	// remix 路径的 OtherRatios 已在 ResolveOriginTask 中设置
@@ -205,6 +368,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 	if seconds <= 0 {
 		seconds = 4
+		if isWan30Model(upstreamModelName(info)) {
+			seconds = 5
+		}
 	}
 
 	size := req.Size
@@ -352,6 +518,7 @@ func normalizeLinkSkyAsyncVideoBody(body map[string]interface{}) {
 		body["async"] = true
 	}
 	normalizeVideo25Output(body)
+	normalizeWan30AsyncVideoBody(body)
 }
 
 func normalizeVideo25Output(body map[string]interface{}) {
@@ -684,7 +851,7 @@ func upstreamModelName(info *relaycommon.RelayInfo) string {
 
 func isLinkSkyAsyncVideoModel(modelName string) bool {
 	switch strings.ToLower(strings.TrimSpace(modelName)) {
-	case "video-2.0", "video-2.0-fast", "video-2.5", "video-2.5-480p", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3":
+	case "video-2.0", "video-2.0-fast", "video-2.5", "video-2.5-480p", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3", "wan3.0-480p", "wan3.0-720p", "wan3.0-1080p":
 		return true
 	default:
 		return false

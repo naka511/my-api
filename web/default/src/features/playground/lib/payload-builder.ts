@@ -23,6 +23,7 @@ import type {
   ParameterEnabled,
 } from '../types'
 import { formatMessageForAPI, isValidMessage } from './message-utils'
+import { isVideoGenerationModel } from '../api'
 
 /**
  * Build API request payload from messages and config
@@ -42,6 +43,10 @@ export function buildChatCompletionPayload(
     group: config.group,
     messages: processedMessages,
     stream: config.stream,
+  }
+
+  if (isVideoGenerationModel(config.model)) {
+    payload.duration = config.duration
   }
 
   // Add enabled parameters
