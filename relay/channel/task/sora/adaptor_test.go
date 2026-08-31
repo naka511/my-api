@@ -93,6 +93,24 @@ func TestValidateVideo25Request(t *testing.T) {
 	require.ErrorContains(t, validateVideo25Request(&invalidImages), "at most 30")
 }
 
+func TestValidateWan30RequestCountsImageURLsOnce(t *testing.T) {
+	valid := &relaycommon.TaskSubmitReq{
+		Prompt:    "test",
+		Model:     "wan3.0-720p",
+		Duration:  5,
+		ImageURLs: make([]string, 10),
+	}
+	for index := range valid.ImageURLs {
+		valid.ImageURLs[index] = "https://example.com/reference.png"
+	}
+
+	require.NoError(t, validateWan30Request(valid))
+
+	invalid := *valid
+	invalid.Images = make([]string, 11)
+	require.ErrorContains(t, validateWan30Request(&invalid), "at most 10")
+}
+
 func TestBuildRequestURLUsesAsyncEndpointForLinkSkyOpenAIChannel(t *testing.T) {
 	adaptor := &TaskAdaptor{
 		ChannelType: constant.ChannelTypeOpenAI,

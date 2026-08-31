@@ -262,10 +262,10 @@ func validateWan30Request(req *relaycommon.TaskSubmitReq) error {
 		return fmt.Errorf("size %s is invalid for model %s", req.Size, req.Model)
 	}
 
-	imageCount := len(req.Images) + len(req.ImageURLs)
-	if strings.TrimSpace(req.ImageURL) != "" || strings.TrimSpace(req.Image) != "" {
-		imageCount++
-	}
+	// normalizeTaskImages merges image, image_url, and image_urls into Images
+	// before validation. Count the canonical list once so image_urls are not
+	// counted a second time.
+	imageCount := len(req.Images)
 	imageCount += len(req.ImageGuidance)
 	if strings.TrimSpace(req.StartImageURL) != "" {
 		imageCount++
