@@ -636,6 +636,57 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
+// SumUsageLogQuota calculates the summary displayed above the usage-log list.
+// It intentionally uses only the filtered logs table. The dashboard has a
+// separate settlement-oriented aggregation because it also needs task status
+// and hourly attribution; reusing that aggregation here makes the usage-log
+// summary slow and gives it a different filtering scope than the visible rows.
+func SumUsageLogQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string) (stat Stat, err error) {
+	quotaQuery, err := applyLogStatFilters(LOG_DB.Table("logs"), startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	if err != nil {
+		return stat, err
+	}
+	if requestId != "" {
+		quotaQuery = quotaQuery.Where("request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		quotaQuery = quotaQuery.Where("upstream_request_id = ?", upstreamRequestId)
+	}
+
+	if logType == LogTypeUnknown {
+		quotaQuery = quotaQuery.Select(
+			"coalesce(sum(case when type = ? then quota when type = ? then -quota else 0 end), 0)",
+			LogTypeConsume, LogTypeRefund,
+		)
+	} else {
+		quotaQuery = quotaQuery.Select("coalesce(sum(quota), 0)").Where("type = ?", logType)
+	}
+	if err := quotaQuery.Scan(&stat.Quota).Error; err != nil {
+		common.SysError("failed to query usage log quota stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	rpmTpmQuery := LOG_DB.Table("logs").Select(
+		"count(*) rpm, coalesce(sum(prompt_tokens), 0) + coalesce(sum(completion_tokens), 0) tpm",
+	)
+	if rpmTpmQuery, err = applyLogStatFilters(rpmTpmQuery, 0, 0, modelName, username, tokenName, channel, group); err != nil {
+		return stat, err
+	}
+	if requestId != "" {
+		rpmTpmQuery = rpmTpmQuery.Where("request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		rpmTpmQuery = rpmTpmQuery.Where("upstream_request_id = ?", upstreamRequestId)
+	}
+	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query usage log rpm/tpm stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	return stat, nil
+}
+
 func applyLogStatFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (*gorm.DB, error) {
 	var err error
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {

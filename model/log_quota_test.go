@@ -74,6 +74,48 @@ func TestSumUsedQuotaSubtractsRefunds(t *testing.T) {
 	require.Equal(t, -20, stat.Quota)
 }
 
+func TestSumUsageLogQuotaUsesOnlyFilteredLogs(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	require.NoError(t, LOG_DB.Create([]*Log{
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			ModelName: "video-2.0",
+			Quota:     120,
+			RequestId: "request-a",
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeRefund,
+			ModelName: "video-2.0",
+			Quota:     120,
+			RequestId: "request-a",
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			ModelName: "video-2.0",
+			Quota:     80,
+			RequestId: "request-b",
+		},
+	}).Error)
+
+	stat, err := SumUsageLogQuota(0, now-1, now+1, "video-2.0", "test-user", "", 0, "", "request-a", "")
+	require.NoError(t, err)
+	require.Equal(t, 0, stat.Quota)
+
+	stat, err = SumUsageLogQuota(0, now-1, now+1, "video-2.0", "test-user", "", 0, "", "request-b", "")
+	require.NoError(t, err)
+	require.Equal(t, 80, stat.Quota)
+}
+
 func TestGetActualQuotaDataCountsOnlySuccessfulTasks(t *testing.T) {
 	truncateTables(t)
 	now := time.Now().Unix()

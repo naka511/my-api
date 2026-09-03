@@ -104,12 +104,21 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	requestId := c.Query("request_id")
+	upstreamRequestId := c.Query("upstream_request_id")
+	statMode := c.Query("stat_mode")
+	var stat model.Stat
+	var err error
+	if statMode == "usage_logs" {
+		stat, err = model.SumUsageLogQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId)
+	} else {
+		stat, err = model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
+	if statMode != "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
 		stat.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)
 		if err != nil {
 			common.ApiError(c, err)
@@ -139,12 +148,21 @@ func GetLogsSelfStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	requestId := c.Query("request_id")
+	upstreamRequestId := c.Query("upstream_request_id")
+	statMode := c.Query("stat_mode")
+	var quotaNum model.Stat
+	var err error
+	if statMode == "usage_logs" {
+		quotaNum, err = model.SumUsageLogQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId)
+	} else {
+		quotaNum, err = model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
+	if statMode != "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
 		quotaNum.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)
 		if err != nil {
 			common.ApiError(c, err)

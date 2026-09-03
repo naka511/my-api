@@ -63,6 +63,10 @@ export function CommonLogsStats() {
         isAdmin,
       })
 
+      // Keep this summary on the same log-only accounting path as the rows
+      // currently visible in the usage-log table.
+      params.stat_mode = 'usage_logs'
+
       const result = isAdmin
         ? await getLogStats(params)
         : await getUserLogStats(params)
