@@ -109,6 +109,13 @@ func GetLogsStat(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
+		stat.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	//tokenNum := model.SumUsedToken(logType, startTimestamp, endTimestamp, modelName, username, "")
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -136,6 +143,13 @@ func GetLogsSelfStat(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
+		quotaNum.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	//tokenNum := model.SumUsedToken(logType, startTimestamp, endTimestamp, modelName, username, tokenName)
 	c.JSON(200, gin.H{

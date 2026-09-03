@@ -38,7 +38,10 @@ import {
   saveGranularity,
   processUserChartData,
 } from '@/features/dashboard/lib'
-import type { ProcessedUserChartData } from '@/features/dashboard/types'
+import type {
+  DashboardFilters,
+  ProcessedUserChartData,
+} from '@/features/dashboard/types'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -63,7 +66,11 @@ const USER_CHARTS: {
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
 
-export function UserCharts() {
+interface UserChartsProps {
+  filters?: DashboardFilters
+}
+
+export function UserCharts({ filters }: UserChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const { customization } = useThemeCustomization()
@@ -87,6 +94,24 @@ export function UserCharts() {
       end_timestamp: Math.floor(end.getTime() / 1000),
     }
   })
+
+  const effectiveTimeRange = useMemo(() => {
+    if (!filters?.start_timestamp || !filters.end_timestamp) return timeRange
+    return {
+      start_timestamp: Math.floor(filters.start_timestamp.getTime() / 1000),
+      end_timestamp: Math.floor(filters.end_timestamp.getTime() / 1000),
+    }
+  }, [filters, timeRange])
+  const effectiveGranularity = filters?.time_granularity ?? timeGranularity
+  const userQueryParams = useMemo(
+    () => ({
+      ...effectiveTimeRange,
+      ...(filters?.username?.trim()
+        ? { username: filters.username.trim() }
+        : {}),
+    }),
+    [effectiveTimeRange, filters?.username]
+  )
 
   const handleRangeChange = useCallback((days: number) => {
     setSelectedRange(days)
@@ -126,8 +151,8 @@ export function UserCharts() {
   }, [resolvedTheme])
 
   const { data: userData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'user-quota', timeRange],
-    queryFn: () => getUserQuotaDataByUsers(timeRange),
+    queryKey: ['dashboard', 'user-quota', userQueryParams],
+    queryFn: () => getUserQuotaDataByUsers(userQueryParams),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
   })
@@ -136,7 +161,7 @@ export function UserCharts() {
     () =>
       processUserChartData(
         isLoading ? [] : (userData ?? []),
-        timeGranularity,
+        effectiveGranularity,
         t,
         topUserLimit,
         customization.preset
@@ -144,7 +169,7 @@ export function UserCharts() {
     [
       userData,
       isLoading,
-      timeGranularity,
+      effectiveGranularity,
       t,
       topUserLimit,
       customization.preset,
@@ -155,43 +180,47 @@ export function UserCharts() {
   return (
     <div className='space-y-3'>
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
-        <Tabs
-          value={String(selectedRange)}
-          onValueChange={(value) => handleRangeChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {!filters && (
+          <>
+            <Tabs
+              value={String(selectedRange)}
+              onValueChange={(value) => handleRangeChange(Number(value))}
+              className='shrink-0'
+            >
+              <TabsList>
+                {TIME_RANGE_PRESETS.map((preset) => (
+                  <TabsTrigger
+                    key={preset.days}
+                    value={String(preset.days)}
+                    className='px-2.5 text-xs'
+                  >
+                    {t(preset.label)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
-        <Tabs
-          value={timeGranularity}
-          onValueChange={(value) =>
-            handleGranularityChange(value as TimeGranularity)
-          }
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_GRANULARITY_OPTIONS.map((opt) => (
-              <TabsTrigger
-                key={opt.value}
-                value={opt.value}
-                className='px-2.5 text-xs'
-              >
-                {t(opt.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+            <Tabs
+              value={timeGranularity}
+              onValueChange={(value) =>
+                handleGranularityChange(value as TimeGranularity)
+              }
+              className='shrink-0'
+            >
+              <TabsList>
+                {TIME_GRANULARITY_OPTIONS.map((opt) => (
+                  <TabsTrigger
+                    key={opt.value}
+                    value={opt.value}
+                    className='px-2.5 text-xs'
+                  >
+                    {t(opt.label)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </>
+        )}
 
         <Tabs
           value={String(topUserLimit)}

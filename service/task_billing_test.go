@@ -44,6 +44,7 @@ func TestMain(m *testing.M) {
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
+		&model.BillingOperation{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -65,6 +66,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM billing_operations")
 		model.CacheQuotaDataLock.Lock()
 		model.CacheQuotaData = make(map[string]*model.QuotaData)
 		model.CacheQuotaDataLock.Unlock()
@@ -292,6 +294,29 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
+func TestRefundTaskQuota_Idempotent(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 5, 5, 5
+	const initQuota, preConsumed = 10000, 1500
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-idempotent-refund", tokenRemain)
+	seedChannel(t, channelID)
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+
+	RefundTaskQuota(ctx, task, "first failure")
+	RefundTaskQuota(ctx, task, "duplicate failure")
+
+	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+	var refundCount int64
+	model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeRefund).Count(&refundCount)
+	assert.Equal(t, int64(1), refundCount)
+}
+
 // ===========================================================================
 // RecalculateTaskQuota tests
 // ===========================================================================
@@ -430,6 +455,30 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculateTaskQuota_Idempotent(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 15, 15, 15
+	const initQuota, preConsumed = 10000, 2000
+	const actualQuota = 3000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-idempotent-settle", tokenRemain)
+	seedChannel(t, channelID)
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+
+	RecalculateTaskQuota(ctx, task, actualQuota, "first settle")
+	RecalculateTaskQuota(ctx, task, actualQuota, "duplicate settle")
+
+	assert.Equal(t, initQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain-(actualQuota-preConsumed), getTokenRemainQuota(t, tokenID))
+	var consumeCount int64
+	model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&consumeCount)
+	assert.Equal(t, int64(1), consumeCount)
 }
 
 // ===========================================================================

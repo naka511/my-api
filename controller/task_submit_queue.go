@@ -272,10 +272,6 @@ func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
 		return err
 	}
 
-	if result.Quota != task.Quota {
-		service.RecalculateTaskQuota(ctx, task, result.Quota, "提交号池后调整计费")
-	}
-
 	task.PrivateData.SubmitContentSummary = buildTaskContentSummary(task, task.PrivateData.SubmitRequestBody)
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.SubmitRequestBody = nil
@@ -295,6 +291,12 @@ func submitLocalQueuedVideoTask(ctx context.Context, task *model.Task) error {
 	}
 	if !updated {
 		return fmt.Errorf("submit lease lost for task %s", task.TaskID)
+	}
+	// Only the worker that successfully persisted the upstream task ID may
+	// perform billing reconciliation. A stale worker must never adjust quota
+	// after its submit lease has been reclaimed.
+	if result.Quota != task.Quota {
+		service.RecalculateTaskQuota(ctx, task, result.Quota, "提交号池后调整计费")
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("local queued video task %s submitted to upstream task %s", task.TaskID, result.UpstreamTaskID))
 	return nil

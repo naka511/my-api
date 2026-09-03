@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -59,11 +60,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	// 2) 调整令牌额度
 	var tokenErr error
 	if !s.relayInfo.IsPlayground {
-		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
-		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
-		}
+		tokenErr = s.adjustTokenQuota(delta)
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
 			common.SysLog(fmt.Sprintf("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
@@ -76,6 +73,45 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	s.settled = true
 	return tokenErr
+}
+
+// adjustTokenQuota applies the session's token-side delta with a stable
+// request key when available. The idempotent path may be retried safely;
+// legacy requests without a request id keep the original single attempt.
+func (s *BillingSession) adjustTokenQuota(delta int) error {
+	operationKey := ""
+	if s.relayInfo.RequestId != "" {
+		operationKey = "request:" + s.relayInfo.RequestId + ":settle_token"
+	}
+	attempts := 1
+	if operationKey != "" {
+		attempts = 3
+	}
+
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if operationKey != "" {
+			_, err = model.ApplyTokenQuotaEffectOnce(model.TokenQuotaEffectParams{
+				OperationKey:  operationKey,
+				TaskID:        s.relayInfo.RequestId,
+				OperationType: "settle",
+				TokenID:       s.relayInfo.TokenId,
+				TokenKey:      s.relayInfo.TokenKey,
+				Delta:         delta,
+			})
+		} else if delta > 0 {
+			err = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
+		} else {
+			err = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+		}
+		if err == nil {
+			return nil
+		}
+		if attempt+1 < attempts {
+			time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+		}
+	}
+	return err
 }
 
 // Refund 退还所有预扣费，幂等安全，异步执行。
@@ -101,25 +137,78 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenConsumed := s.tokenConsumed
 	extraReserved := s.extraReserved
 	subscriptionId := s.relayInfo.SubscriptionId
+	requestId := s.relayInfo.RequestId
 	funding := s.funding
 
 	gopool.Go(func() {
 		// 1) 退还资金来源
-		if err := funding.Refund(); err != nil {
+		if err := retryBillingEffect(requestId, funding.Refund); err != nil {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			refundKey := ""
+			if requestId != "" {
+				refundKey = "request:" + requestId + ":pre_submit_extra_refund"
+			}
+			err := retryBillingEffect(refundKey, func() error {
+				if refundKey != "" {
+					_, err := model.ApplySubscriptionDeltaOnce(refundKey, subscriptionId, -int64(extraReserved))
+					return err
+				}
+				return model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved))
+			})
+			if err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
 		// 2) 退还令牌额度
 		if tokenConsumed > 0 && !isPlayground {
-			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
+			refundKey := ""
+			if requestId != "" {
+				refundKey = "request:" + requestId + ":pre_submit_refund"
+			}
+			err := retryBillingEffect(refundKey, func() error {
+				if refundKey != "" {
+					_, err := model.ApplyTokenQuotaEffectOnce(model.TokenQuotaEffectParams{
+						OperationKey: refundKey,
+						TokenID:      tokenId,
+						TokenKey:     tokenKey,
+						Delta:        -tokenConsumed,
+					})
+					return err
+				}
+				return model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed)
+			})
+			if err != nil {
 				common.SysLog("error refunding token quota: " + err.Error())
 			}
 		}
 	})
+}
+
+// retryBillingEffect retries only operations with a stable request key.
+// Legacy requests without a key remain single-attempt to avoid duplicating
+// non-idempotent quota updates.
+func retryBillingEffect(operationKey string, fn func() error) error {
+	if fn == nil {
+		return nil
+	}
+	attempts := 1
+	if operationKey != "" {
+		attempts = 3
+	}
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err := fn(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt+1 < attempts {
+			time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+		}
+	}
+	return lastErr
 }
 
 // NeedsRefund 返回是否存在需要退还的预扣状态。
@@ -207,7 +296,22 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	if err := s.funding.PreConsume(effectiveQuota); err != nil {
 		// 预扣费失败，回滚令牌额度
 		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
-			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
+			rollbackKey := ""
+			if s.relayInfo.RequestId != "" {
+				rollbackKey = "request:" + s.relayInfo.RequestId + ":pre_consume_rollback"
+			}
+			var rollbackErr error
+			if rollbackKey != "" {
+				_, rollbackErr = model.ApplyTokenQuotaEffectOnce(model.TokenQuotaEffectParams{
+					OperationKey: rollbackKey,
+					TokenID:      s.relayInfo.TokenId,
+					TokenKey:     s.relayInfo.TokenKey,
+					Delta:        -s.tokenConsumed,
+				})
+			} else {
+				rollbackErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed)
+			}
+			if rollbackErr != nil {
 				common.SysLog(fmt.Sprintf("error rolling back token quota (userId=%d, tokenId=%d, amount=%d, fundingErr=%s): %s",
 					s.relayInfo.UserId, s.relayInfo.TokenId, s.tokenConsumed, err.Error(), rollbackErr.Error()))
 			}
@@ -366,9 +470,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		relayInfo.UserQuota = userQuota
 
+		refundOperationKey := ""
+		if relayInfo.RequestId != "" {
+			refundOperationKey = "request:" + relayInfo.RequestId + ":pre_submit_refund"
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
-			funding:   &WalletFunding{userId: relayInfo.UserId},
+			funding:   &WalletFunding{userId: relayInfo.UserId, operationKey: refundOperationKey},
 		}
 		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
 			return nil, apiErr

@@ -53,6 +53,7 @@ type Log struct {
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
+	BillingOperationKey *string `json:"-" gorm:"type:varchar(191);uniqueIndex;default:null"`
 	Other             string `json:"other"`
 }
 
@@ -246,6 +247,7 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	BillingOperationKey string              `json:"billing_operation_key,omitempty"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -290,7 +292,14 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
 	}
-	err := LOG_DB.Create(log).Error
+	if params.BillingOperationKey != "" {
+		log.BillingOperationKey = &params.BillingOperationKey
+		var existing Log
+		if err := LOG_DB.Where("billing_operation_key = ?", params.BillingOperationKey).First(&existing).Error; err == nil {
+			return
+		}
+	}
+	err := persistLogWithRetry(log)
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
@@ -302,15 +311,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]interface{}
+	UserId              int
+	LogType             int
+	Content             string
+	ChannelId           int
+	ModelName           string
+	Quota               int
+	TokenId             int
+	Group               string
+	Other               map[string]interface{}
+	BillingOperationKey string
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -346,13 +356,43 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		Group:     params.Group,
 		Other:     common.MapToJsonStr(params.Other),
 	}
-	err := LOG_DB.Create(log).Error
+	if params.BillingOperationKey != "" {
+		log.BillingOperationKey = &params.BillingOperationKey
+		var existing Log
+		if err := LOG_DB.Where("billing_operation_key = ?", params.BillingOperationKey).First(&existing).Error; err == nil {
+			return
+		}
+	}
+	err := persistLogWithRetry(log)
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
 	}
 	if params.LogType == LogTypeConsume && common.DataExportEnabled {
 		LogQuotaData(params.UserId, username, params.ModelName, params.Quota, common.GetTimestamp(), 0)
 	}
+}
+
+// persistLogWithRetry handles short-lived log database failures. When a
+// billing operation key is present, the unique key check makes retries safe.
+func persistLogWithRetry(log *Log) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if log.BillingOperationKey != nil && *log.BillingOperationKey != "" {
+			var existing Log
+			if err := LOG_DB.Where("billing_operation_key = ?", *log.BillingOperationKey).First(&existing).Error; err == nil {
+				return nil
+			}
+		}
+		if err := LOG_DB.Create(log).Error; err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+		}
+	}
+	return lastErr
 }
 
 func HasTaskConsumeLog(taskID string) bool {

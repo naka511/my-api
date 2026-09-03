@@ -216,6 +216,12 @@ export function Dashboard() {
           onReset={handleResetFilters}
         />
       </>
+    ) : activeSection === 'users' ? (
+      <ModelsFilter
+        preferences={chartPreferences}
+        onFilterChange={handleFilterChange}
+        onReset={handleResetFilters}
+      />
     ) : null
 
   return (
@@ -294,7 +300,7 @@ export function Dashboard() {
           {activeSection === 'users' && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts />
+                <LazyUserCharts filters={modelFilters} />
               </Suspense>
             </FadeIn>
           )}

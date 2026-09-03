@@ -110,6 +110,24 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 	return GetActualQuotaData(userId, "", startTime, endTime)
 }
 
+// SumActualQuotaData returns the net quota from settled dashboard data.
+// It is used by aggregate statistics so they share the same accounting basis
+// as the user consumption ranking.
+func SumActualQuotaData(userId int, username string, startTime int64, endTime int64) (int, error) {
+	data, err := GetActualQuotaData(userId, username, startTime, endTime)
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+	for _, item := range data {
+		if item != nil {
+			total += item.Quota
+		}
+	}
+	return total, nil
+}
+
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	data, err := GetActualQuotaData(0, "", startTime, endTime)
 	if err != nil {
