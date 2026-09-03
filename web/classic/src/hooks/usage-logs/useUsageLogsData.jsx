@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
@@ -70,6 +70,7 @@ export const useLogsData = () => {
   const [showStat, setShowStat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
+  const statRequestIdRef = useRef(0);
   const [activePage, setActivePage] = useState(1);
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
@@ -268,7 +269,7 @@ export const useLogsData = () => {
   };
 
   // Statistics functions
-  const getLogSelfStat = async (valuesOverride = null) => {
+  const getLogSelfStat = async (valuesOverride = null, requestId = 0) => {
     const {
       token_name,
       model_name,
@@ -280,18 +281,20 @@ export const useLogsData = () => {
     const currentLogType = formLogType !== undefined ? formLogType : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}`;
+    let url = `/api/log/self/stat?stat_mode=usage_logs&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}`;
     url = encodeURI(url);
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
-      setStat(data);
-    } else {
+      if (requestId === statRequestIdRef.current) {
+        setStat(data);
+      }
+    } else if (requestId === statRequestIdRef.current) {
       showError(message);
     }
   };
 
-  const getLogStat = async (valuesOverride = null) => {
+  const getLogStat = async (valuesOverride = null, requestId = 0) => {
     const {
       username,
       token_name,
@@ -305,26 +308,29 @@ export const useLogsData = () => {
     const currentLogType = formLogType !== undefined ? formLogType : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}`;
+    let url = `/api/log/stat?stat_mode=usage_logs&type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}`;
     url = encodeURI(url);
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
-      setStat(data);
-    } else {
+      if (requestId === statRequestIdRef.current) {
+        setStat(data);
+      }
+    } else if (requestId === statRequestIdRef.current) {
       showError(message);
     }
   };
 
   const handleEyeClick = async (valuesOverride = null) => {
-    if (loadingStat) {
-      return;
-    }
+    const requestId = ++statRequestIdRef.current;
     setLoadingStat(true);
     if (isAdminUser) {
-      await getLogStat(valuesOverride);
+      await getLogStat(valuesOverride, requestId);
     } else {
-      await getLogSelfStat(valuesOverride);
+      await getLogSelfStat(valuesOverride, requestId);
+    }
+    if (requestId !== statRequestIdRef.current) {
+      return;
     }
     setShowStat(true);
     setLoadingStat(false);
