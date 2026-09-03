@@ -38,7 +38,7 @@ const LogsFilters = ({
     <Form
       initValues={formInitValues}
       getFormApi={(api) => setFormApi(api)}
-      onSubmit={refresh}
+      onSubmit={() => refresh()}
       allowEmpty={true}
       autoComplete='off'
       layout='vertical'

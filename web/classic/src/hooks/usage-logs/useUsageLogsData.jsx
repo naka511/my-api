@@ -808,9 +808,17 @@ export const useLogsData = () => {
 
   // Refresh function
   const refresh = async (valuesOverride = null) => {
+    // Semi Form submits its raw shape (dateRange/logType). The API helpers
+    // consume the normalized shape returned by getFormValues instead.
+    const values =
+      valuesOverride &&
+      valuesOverride.start_timestamp !== undefined &&
+      valuesOverride.end_timestamp !== undefined
+        ? valuesOverride
+        : getFormValues();
     setActivePage(1);
-    await handleEyeClick(valuesOverride);
-    await loadLogs(1, pageSize, null, valuesOverride);
+    await handleEyeClick(values);
+    await loadLogs(1, pageSize, null, values);
   };
 
   const resetFilters = async () => {
