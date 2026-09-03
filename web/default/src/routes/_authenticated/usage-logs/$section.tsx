@@ -59,6 +59,22 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
     }
+    // Common logs always keep an explicit "all types" value so the filter
+    // cannot become blank after a clear action or a stale URL is opened.
+    if (params.section === 'common') {
+      const hasValidType =
+        Array.isArray(search?.type) &&
+        search.type.length === 1 &&
+        logTypeValues.includes(search.type[0])
+      if (!hasValidType) {
+        throw redirect({
+          to: '/usage-logs/$section',
+          params: { section: params.section },
+          search: { ...search, type: ['0'] },
+          replace: true,
+        })
+      }
+    }
     // type 仅 common 使用，非 common 时清掉 URL 里的 type
     const hasTypeSearch = Array.isArray(search?.type)
       ? search.type.length > 0

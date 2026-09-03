@@ -118,6 +118,13 @@ func GetLogsStat(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if statMode == "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" && requestId == "" && upstreamRequestId == "" {
+		stat.Quota, err = model.SumSettledUsageLogQuota(0, username, startTimestamp, endTimestamp)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	if statMode != "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
 		stat.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)
 		if err != nil {
@@ -161,6 +168,13 @@ func GetLogsSelfStat(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if statMode == "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" && requestId == "" && upstreamRequestId == "" {
+		quotaNum.Quota, err = model.SumSettledUsageLogQuota(0, username, startTimestamp, endTimestamp)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if statMode != "usage_logs" && logType == model.LogTypeUnknown && modelName == "" && tokenName == "" && channel == 0 && group == "" {
 		quotaNum.Quota, err = model.SumActualQuotaData(0, username, startTimestamp, endTimestamp)

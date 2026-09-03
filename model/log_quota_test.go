@@ -116,6 +116,84 @@ func TestSumUsageLogQuotaUsesOnlyFilteredLogs(t *testing.T) {
 	require.Equal(t, 80, stat.Quota)
 }
 
+func TestSumSettledUsageLogQuotaExcludesPendingAndFailedTasks(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&User{Id: 1, Username: "test-user"}).Error)
+	require.NoError(t, DB.Create([]*Task{
+		{
+			TaskID:     "task-success",
+			UserId:     1,
+			Quota:      100,
+			SubmitTime: now,
+			Status:     TaskStatusSuccess,
+			Properties: Properties{OriginModelName: "video-2.0"},
+		},
+		{
+			TaskID:     "task-pending",
+			UserId:     1,
+			Quota:      70,
+			SubmitTime: now,
+			Status:     TaskStatusInProgress,
+			Properties: Properties{OriginModelName: "video-2.0"},
+		},
+		{
+			TaskID:     "task-failed",
+			UserId:     1,
+			Quota:      80,
+			SubmitTime: now,
+			Status:     TaskStatusFailure,
+			Properties: Properties{OriginModelName: "video-2.0"},
+		},
+	}).Error)
+	require.NoError(t, LOG_DB.Create([]*Log{
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			Quota:     100,
+			Other:     `{"is_task":true,"task_id":"task-success"}`,
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			Quota:     70,
+			Other:     `{"is_task":true,"task_id":"task-pending"}`,
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			Quota:     80,
+			Other:     `{"is_task":true,"task_id":"task-failed"}`,
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeRefund,
+			Quota:     80,
+			Other:     `{"is_task":true,"task_id":"task-failed"}`,
+		},
+		{
+			UserId:    1,
+			Username:  "test-user",
+			CreatedAt: now,
+			Type:      LogTypeConsume,
+			Quota:     50,
+			Other:     `{"request_path":"/v1/chat/completions"}`,
+		},
+	}).Error)
+
+	quota, err := SumSettledUsageLogQuota(0, "test-user", now-1, now+1)
+	require.NoError(t, err)
+	require.Equal(t, 150, quota)
+}
+
 func TestGetActualQuotaDataCountsOnlySuccessfulTasks(t *testing.T) {
 	truncateTables(t)
 	now := time.Now().Unix()

@@ -128,6 +128,69 @@ func SumActualQuotaData(userId int, username string, startTime int64, endTime in
 	return total, nil
 }
 
+// SumSettledUsageLogQuota returns the settled quota used by the usage-log
+// summary. Synchronous requests are aggregated from non-task logs, while
+// asynchronous requests are aggregated from successful tasks only. Pending
+// task pre-consumption logs and failed task logs are excluded.
+//
+// This is intentionally a SQL-only total rather than GetActualQuotaData: the
+// latter also builds hourly/model/user chart rows and is too expensive for a
+// small header statistic on a high-volume installation.
+func SumSettledUsageLogQuota(userId int, username string, startTime int64, endTime int64) (int, error) {
+	userIds := []int(nil)
+	if username != "" {
+		var err error
+		userIds, err = GetUserIdsByUsernameFilter(username)
+		if err != nil {
+			return 0, err
+		}
+		if len(userIds) == 0 {
+			return 0, nil
+		}
+	}
+
+	logQuery := LOG_DB.Table("logs").Select(
+		"coalesce(sum(case when type = ? then quota when type = ? then -quota else 0 end), 0)",
+		LogTypeConsume, LogTypeRefund,
+	).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("other IS NULL OR other = '' OR (other NOT LIKE ? AND other NOT LIKE ?)", dashboardTaskFlagPattern, dashboardTaskIDPattern)
+	if userId != 0 {
+		logQuery = logQuery.Where("user_id = ?", userId)
+	} else if username != "" {
+		logQuery = logQuery.Where("user_id IN ?", userIds)
+	}
+	if startTime != 0 {
+		logQuery = logQuery.Where("created_at >= ?", startTime)
+	}
+	if endTime != 0 {
+		logQuery = logQuery.Where("created_at <= ?", endTime)
+	}
+
+	var logQuota int
+	if err := logQuery.Scan(&logQuota).Error; err != nil {
+		return 0, err
+	}
+
+	taskQuery := DB.Model(&Task{}).Select("coalesce(sum(quota), 0)").Where("status = ?", TaskStatusSuccess)
+	if userId != 0 {
+		taskQuery = taskQuery.Where("user_id = ?", userId)
+	} else if username != "" {
+		taskQuery = taskQuery.Where("user_id IN ?", userIds)
+	}
+	if startTime != 0 {
+		taskQuery = taskQuery.Where("submit_time >= ?", startTime)
+	}
+	if endTime != 0 {
+		taskQuery = taskQuery.Where("submit_time <= ?", endTime)
+	}
+
+	var taskQuota int
+	if err := taskQuery.Scan(&taskQuota).Error; err != nil {
+		return 0, err
+	}
+	return logQuota + taskQuota, nil
+}
+
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	data, err := GetActualQuotaData(0, "", startTime, endTime)
 	if err != nil {

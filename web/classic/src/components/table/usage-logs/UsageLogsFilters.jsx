@@ -132,7 +132,6 @@ const LogsFilters = ({
               field='logType'
               placeholder={t('日志类型')}
               className='w-full sm:w-auto min-w-[120px]'
-              showClear
               pure
               onChange={(value) => {
                 setLogType(Number(value) || 0);
