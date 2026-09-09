@@ -118,7 +118,7 @@ export async function sendVideoGeneration(
           ? '854x480'
           : model === 'wan3.0-1080p'
             ? '1920x1080'
-            : '1280x720',
+            : '1280x720'
   }
   if (imageURLs.length === 1) {
     videoBody.image_url = imageURLs[0]
