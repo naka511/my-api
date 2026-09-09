@@ -107,13 +107,18 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 	} else if isWan30Model(modelName) {
 		defaultSeconds = "5"
 		defaultSize = wan30PlaygroundSize(modelName, "16:9")
+	} else if isVideo933Model(modelName) {
+		defaultSeconds = "5"
+		defaultSize = ""
 	} else if strings.EqualFold(strings.TrimSpace(modelName), "video-2.5-480p") {
 		defaultSize = "864x496"
 	}
 	videoBody := map[string]any{
 		"model":  body["model"],
 		"prompt": extractPlaygroundBodyPrompt(body),
-		"size":   defaultSize,
+	}
+	if defaultSize != "" {
+		videoBody["size"] = defaultSize
 	}
 	if group, ok := body["group"]; ok {
 		videoBody["group"] = group
@@ -162,8 +167,10 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		"start_image_url",
 		"end_image_url",
 		"video_url",
+		"video_urls",
 		"video_reference",
 		"audio_url",
+		"audio_urls",
 		"audio_reference",
 		"image_guidance",
 		"start_frame",
@@ -188,6 +195,7 @@ func buildPlaygroundVideoBody(body map[string]any) map[string]any {
 		}
 	}
 	normalizeVideo25AsyncOutput(videoBody, modelName)
+	normalizeVideo933AsyncOutput(videoBody, modelName)
 	return videoBody
 }
 

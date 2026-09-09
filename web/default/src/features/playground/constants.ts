@@ -60,6 +60,8 @@ export const DEFAULT_CONFIG: PlaygroundConfig = {
 
 export function getVideoDurationOptions(model: string): number[] {
   const normalized = model.trim().toLowerCase()
+  if (normalized.startsWith('933-video2.0'))
+    return Array.from({ length: 12 }, (_, i) => i + 4)
   if (['minimax-h3-480p', 'minimax-h3-768p', 'minimax-h3-2k', 'minimax-h3-4k'].includes(normalized)) return Array.from({ length: 11 }, (_, i) => i + 5)
   if (['wan3.0-480p', 'wan3.0-720p', 'wan3.0-1080p'].includes(normalized)) return Array.from({ length: 29 }, (_, i) => i + 2)
   if (normalized === 'sora2' || normalized === 'sora-2' || normalized === 'ko3') return [4, 8, 12]

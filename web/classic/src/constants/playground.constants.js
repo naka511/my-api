@@ -104,6 +104,18 @@ export const VIDEO_MODEL_CONFIG = {
   'video-2.5-480p': {
     durations: createDurationRange(4, 30),
   },
+  '933-video2.0': {
+    durations: createDurationRange(4, 15),
+  },
+  '933-video2.0-480p': {
+    durations: createDurationRange(4, 15),
+  },
+  '933-video2.0-mini': {
+    durations: createDurationRange(4, 15),
+  },
+  '933-video2.0-mini-480p': {
+    durations: createDurationRange(4, 15),
+  },
   'wan3.0-480p': {
     durations: createDurationRange(2, 30),
   },

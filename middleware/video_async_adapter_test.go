@@ -76,6 +76,23 @@ func TestNormalizeAsyncVideoRequestForVideo25480PForcesOutput(t *testing.T) {
 	require.Equal(t, "496x864", body["size"])
 }
 
+func TestNormalizeAsyncVideoRequestFor933Video20(t *testing.T) {
+	body := map[string]any{
+		"model":  "933-video2.0-mini-480p",
+		"prompt": "test",
+		"size":   "1280x720",
+	}
+
+	normalizeAsyncVideoRequest(body)
+
+	require.Equal(t, "5", body["seconds"])
+	require.Equal(t, 5, body["duration"])
+	require.Equal(t, "480p", body["resolution"])
+	require.Equal(t, "16:9", body["aspect_ratio"])
+	_, hasSize := body["size"]
+	require.False(t, hasSize)
+}
+
 func TestVideoAsyncRequestConvertRewritesPathAndBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

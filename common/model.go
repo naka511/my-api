@@ -24,6 +24,10 @@ var (
 		"video-2.0-fast",
 		"video-2.5",
 		"video-2.5-480p",
+		"933-video2.0",
+		"933-video2.0-480p",
+		"933-video2.0-mini",
+		"933-video2.0-mini-480p",
 		"sora-2",
 		"sora2",
 		"veo31",
@@ -79,6 +83,33 @@ var Wan30Models = []string{
 	"wan3.0-480p",
 	"wan3.0-720p",
 	"wan3.0-1080p",
+}
+
+var Video933Models = []string{
+	"933-video2.0",
+	"933-video2.0-480p",
+	"933-video2.0-mini",
+	"933-video2.0-mini-480p",
+}
+
+func IsVideo933Model(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	for _, model := range Video933Models {
+		if normalized == model {
+			return true
+		}
+	}
+	return false
+}
+
+func Video933Resolution(modelName string) string {
+	if !IsVideo933Model(modelName) {
+		return ""
+	}
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(modelName)), "-480p") {
+		return "480p"
+	}
+	return "720p"
 }
 
 func IsWan30Model(modelName string) bool {

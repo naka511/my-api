@@ -710,8 +710,10 @@ type TaskSubmitReq struct {
 	StartFrame      []TaskMediaReference   `json:"start_frame,omitempty"`
 	EndFrame        []TaskMediaReference   `json:"end_frame,omitempty"`
 	VideoURL        string                 `json:"video_url,omitempty"`
+	VideoURLs       []string               `json:"video_urls,omitempty"`
 	VideoReference  []TaskMediaReference   `json:"video_reference,omitempty"`
 	AudioURL        string                 `json:"audio_url,omitempty"`
+	AudioURLs       []string               `json:"audio_urls,omitempty"`
 	AudioReference  []TaskMediaReference   `json:"audio_reference,omitempty"`
 	AspectRatio     string                 `json:"aspect_ratio,omitempty"`
 	Resolution      string                 `json:"resolution,omitempty"`

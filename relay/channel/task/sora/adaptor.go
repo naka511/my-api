@@ -117,6 +117,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 		}
 	}
+	if isVideo933Model(modelName) {
+		validationReq := req
+		validationReq.Model = modelName
+		if err := validateVideo933Request(&validationReq); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+	}
 	if isWan30Model(modelName) {
 		validationReq := req
 		validationReq.Model = modelName
@@ -192,6 +199,109 @@ func validateVideo25Request(req *relaycommon.TaskSubmitReq) error {
 		}
 	}
 	return nil
+}
+
+func validateVideo933Request(req *relaycommon.TaskSubmitReq) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+	if utf8.RuneCountInString(req.Prompt) > 5000 {
+		return fmt.Errorf("prompt must not exceed 5000 characters")
+	}
+
+	duration := req.Duration
+	if duration == 0 && strings.TrimSpace(req.Seconds) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(req.Seconds))
+		if err != nil {
+			return fmt.Errorf("duration must be an integer between 4 and 15")
+		}
+		duration = parsed
+	}
+	if duration != 0 && (duration < 4 || duration > 15) {
+		return fmt.Errorf("duration must be between 4 and 15 seconds")
+	}
+
+	if aspectRatio := strings.TrimSpace(req.AspectRatio); aspectRatio != "" {
+		switch aspectRatio {
+		case "16:9", "9:16", "1:1", "21:9", "4:3", "3:4":
+		default:
+			return fmt.Errorf("aspect_ratio must be one of 16:9, 9:16, 1:1, 21:9, 4:3, or 3:4")
+		}
+	}
+
+	expectedResolution := common.Video933Resolution(req.Model)
+	if resolution := strings.TrimSpace(req.Resolution); resolution != "" && !strings.EqualFold(resolution, expectedResolution) {
+		return fmt.Errorf("resolution must be %s for model %s", expectedResolution, req.Model)
+	}
+	if (strings.TrimSpace(req.StartImageURL) == "") != (strings.TrimSpace(req.EndImageURL) == "") {
+		return fmt.Errorf("start_image_url and end_image_url must be provided together")
+	}
+
+	imageCount := len(req.Images) + len(req.ImageGuidance)
+	if len(req.Images) == 0 {
+		if strings.TrimSpace(req.Image) != "" || strings.TrimSpace(req.ImageURL) != "" {
+			imageCount++
+		}
+		imageCount += len(req.ImageURLs)
+	}
+	if strings.TrimSpace(req.StartImageURL) != "" {
+		imageCount += 2
+	}
+	if imageCount > 9 {
+		return fmt.Errorf("image references support at most 9 images")
+	}
+
+	videoCount, err := validateVideo933ReferenceForms(req.VideoURL, req.VideoURLs, req.VideoReference, "video")
+	if err != nil {
+		return err
+	}
+	audioCount, err := validateVideo933ReferenceForms(req.AudioURL, req.AudioURLs, req.AudioReference, "audio")
+	if err != nil {
+		return err
+	}
+	if audioCount > 0 && imageCount == 0 && videoCount == 0 {
+		return fmt.Errorf("audio references require at least one image or video reference")
+	}
+	return nil
+}
+
+func validateVideo933ReferenceForms(singleURL string, urls []string, references []relaycommon.TaskMediaReference, kind string) (int, error) {
+	forms := 0
+	if strings.TrimSpace(singleURL) != "" {
+		forms++
+	}
+	if len(urls) > 0 {
+		forms++
+	}
+	if len(references) > 0 {
+		forms++
+	}
+	if forms > 1 {
+		return 0, fmt.Errorf("%s references must use only one field form", kind)
+	}
+
+	count := len(urls) + len(references)
+	if strings.TrimSpace(singleURL) != "" {
+		count++
+	}
+	maxCount := 3
+	if kind == "image" {
+		maxCount = 9
+	}
+	if count > maxCount {
+		return 0, fmt.Errorf("%s references support at most %d files", kind, maxCount)
+	}
+	for _, url := range urls {
+		if strings.TrimSpace(url) == "" {
+			return 0, fmt.Errorf("%s_urls must not contain empty urls", kind)
+		}
+	}
+	for _, reference := range references {
+		if strings.TrimSpace(reference.URL) == "" {
+			return 0, fmt.Errorf("%s_reference url must not be empty", kind)
+		}
+	}
+	return count, nil
 }
 
 func normalizeWan30AsyncVideoBody(body map[string]interface{}) {
@@ -323,6 +433,10 @@ func isWan30Model(modelName string) bool {
 	return common.IsWan30Model(modelName)
 }
 
+func isVideo933Model(modelName string) bool {
+	return common.IsVideo933Model(modelName)
+}
+
 func wan30SizeForAspectRatio(modelName string, aspectRatio string) string {
 	return wan30ModelSizes(modelName)[strings.TrimSpace(aspectRatio)]
 }
@@ -368,7 +482,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 	if seconds <= 0 {
 		seconds = 4
-		if isWan30Model(upstreamModelName(info)) {
+		if isWan30Model(upstreamModelName(info)) || isVideo933Model(upstreamModelName(info)) {
 			seconds = 5
 		}
 	}
@@ -519,6 +633,7 @@ func normalizeLinkSkyAsyncVideoBody(body map[string]interface{}) {
 	}
 	normalizeVideo25Output(body)
 	normalizeWan30AsyncVideoBody(body)
+	normalizeVideo933Output(body)
 }
 
 func normalizeVideo25Output(body map[string]interface{}) {
@@ -556,6 +671,27 @@ func normalizeVideo25Output(body map[string]interface{}) {
 	default:
 		body["size"] = "864x496"
 	}
+}
+
+func normalizeVideo933Output(body map[string]interface{}) {
+	modelName, _ := body["model"].(string)
+	if !isVideo933Model(modelName) {
+		return
+	}
+	if _, hasDuration := body["duration"]; !hasDuration {
+		if _, hasSeconds := body["seconds"]; !hasSeconds {
+			body["duration"] = 5
+		}
+	}
+	if _, hasAspectRatio := body["aspect_ratio"]; !hasAspectRatio {
+		body["aspect_ratio"] = "16:9"
+	}
+	if _, hasResolution := body["resolution"]; !hasResolution {
+		body["resolution"] = common.Video933Resolution(modelName)
+	}
+	delete(body, "size")
+	delete(body, "width")
+	delete(body, "height")
 }
 
 func video25AspectRatioFromSize(size string) string {
@@ -851,7 +987,7 @@ func upstreamModelName(info *relaycommon.RelayInfo) string {
 
 func isLinkSkyAsyncVideoModel(modelName string) bool {
 	switch strings.ToLower(strings.TrimSpace(modelName)) {
-	case "video-2.0", "video-2.0-fast", "video-2.5", "video-2.5-480p", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3", "wan3.0-480p", "wan3.0-720p", "wan3.0-1080p":
+	case "video-2.0", "video-2.0-fast", "video-2.5", "video-2.5-480p", "933-video2.0", "933-video2.0-480p", "933-video2.0-mini", "933-video2.0-mini-480p", "sora2", "sora2-pro", "veo31", "veo31-fast", "veo31-ref", "kling-v3", "grok-imagine-video", "ko3", "wan3.0-480p", "wan3.0-720p", "wan3.0-1080p":
 		return true
 	default:
 		return false

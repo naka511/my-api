@@ -70,6 +70,8 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 	defaultSeconds := "4"
 	if isMiniMaxH3Model(modelName) {
 		defaultSeconds = "5"
+	} else if isVideo933Model(modelName) {
+		defaultSeconds = "5"
 	}
 	if _, ok := body["seconds"]; !ok {
 		if duration, ok := body["duration"]; ok {
@@ -78,6 +80,9 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 			body["seconds"] = defaultSeconds
 			body["duration"] = 4
 		} else if isWan30Model(modelName) {
+			body["seconds"] = defaultSeconds
+			body["duration"] = 5
+		} else if isVideo933Model(modelName) {
 			body["seconds"] = defaultSeconds
 			body["duration"] = 5
 		}
@@ -96,6 +101,7 @@ func normalizeAsyncVideoRequest(body map[string]any) {
 		body["size"] = normalizeMiniMaxH3SizeValue(modelName, size)
 	}
 	normalizeVideo25AsyncOutput(body, modelName)
+	normalizeVideo933AsyncOutput(body, modelName)
 
 	if _, ok := body["input_reference"]; !ok {
 		if imageURL, ok := body["image_url"].(string); ok && strings.TrimSpace(imageURL) != "" {
@@ -110,6 +116,10 @@ func isMiniMaxH3Model(model string) bool {
 
 func isWan30Model(model string) bool {
 	return common.IsWan30Model(model)
+}
+
+func isVideo933Model(model string) bool {
+	return common.IsVideo933Model(model)
 }
 
 func isVideo25Model(model string) bool {
@@ -156,6 +166,22 @@ func normalizeVideo25AsyncOutput(body map[string]any, model string) {
 	}
 }
 
+func normalizeVideo933AsyncOutput(body map[string]any, model string) {
+	if !isVideo933Model(model) {
+		return
+	}
+	if _, hasResolution := body["resolution"]; !hasResolution {
+		body["resolution"] = common.Video933Resolution(model)
+	}
+	if _, hasAspectRatio := body["aspect_ratio"]; !hasAspectRatio {
+		body["aspect_ratio"] = "16:9"
+	}
+	// The 933 API accepts resolution, not the legacy size/width/height fields.
+	delete(body, "size")
+	delete(body, "width")
+	delete(body, "height")
+}
+
 func video25AspectRatioFromSize(size string) string {
 	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(size, "×", "x")))
 	parts := strings.Split(normalized, "x")
@@ -177,6 +203,9 @@ func video25AspectRatioFromSize(size string) string {
 }
 
 func defaultVideoSizeForAspectRatio(model string, aspectRatio string) string {
+	if isVideo933Model(model) {
+		return ""
+	}
 	if isWan30Model(model) {
 		modelSizes := map[string]map[string]string{
 			"wan3.0-480p":  {"16:9": "854x480", "4:3": "736x552", "1:1": "640x640", "3:4": "552x736", "9:16": "480x854"},

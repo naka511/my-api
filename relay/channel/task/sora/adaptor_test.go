@@ -111,6 +111,46 @@ func TestValidateWan30RequestCountsImageURLsOnce(t *testing.T) {
 	require.ErrorContains(t, validateWan30Request(&invalid), "at most 10")
 }
 
+func TestValidateVideo933Request(t *testing.T) {
+	valid := &relaycommon.TaskSubmitReq{
+		Model:        "933-video2.0-mini",
+		Prompt:       "test",
+		Duration:     15,
+		Resolution:   "720p",
+		Images:       make([]string, 9),
+		VideoURLs:    []string{"https://example.com/video.mp4"},
+		AudioURLs:    []string{"https://example.com/audio.mp3"},
+	}
+	require.NoError(t, validateVideo933Request(valid))
+
+	invalidDuration := *valid
+	invalidDuration.Duration = 16
+	require.ErrorContains(t, validateVideo933Request(&invalidDuration), "between 4 and 15")
+
+	invalidResolution := *valid
+	invalidResolution.Resolution = "480p"
+	require.ErrorContains(t, validateVideo933Request(&invalidResolution), "must be 720p")
+
+	invalidAudioOnly := &relaycommon.TaskSubmitReq{
+		Model:      "933-video2.0",
+		Prompt:     "test",
+		AudioURLs:  []string{"https://example.com/audio.mp3"},
+		Resolution: "720p",
+	}
+	require.ErrorContains(t, validateVideo933Request(invalidAudioOnly), "require at least one image or video")
+}
+
+func TestBuildRequestURLUsesAsyncEndpointFor933Video20(t *testing.T) {
+	adaptor := &TaskAdaptor{ChannelType: constant.ChannelTypeOpenAI, baseURL: "https://api.example.com"}
+
+	url, err := adaptor.BuildRequestURL(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "933-video2.0-mini-480p"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://api.example.com/v1/video/async-generations", url)
+}
+
 func TestBuildRequestURLUsesAsyncEndpointForLinkSkyOpenAIChannel(t *testing.T) {
 	adaptor := &TaskAdaptor{
 		ChannelType: constant.ChannelTypeOpenAI,

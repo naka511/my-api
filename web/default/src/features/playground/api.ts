@@ -32,6 +32,7 @@ export function isVideoGenerationModel(model: string): boolean {
     normalized.includes('sora-2') ||
     normalized.includes('video-2.0') ||
     normalized.includes('video-2.5') ||
+    normalized.startsWith('933-video2.0') ||
     ['wan3.0-480p', 'wan3.0-720p', 'wan3.0-1080p'].includes(normalized) ||
     normalized.includes('ko3') ||
     [
@@ -97,14 +98,19 @@ export async function sendVideoGeneration(
     'minimax-h3-4k',
   ].includes(model)
   const isVideo25480p = model === 'video-2.5-480p'
+  const isVideo933 = model.startsWith('933-video2.0')
   const isWan30 = ['wan3.0-480p', 'wan3.0-720p', 'wan3.0-1080p'].includes(model)
   const imageURLs = extractVideoImageURLs(payload)
   const videoBody: Record<string, unknown> = {
     model: payload.model,
     group: payload.group,
     prompt: extractVideoPrompt(payload),
-    seconds: String(payload.duration || (isMiniMaxH3 || isWan30 ? 5 : 4)),
-    size: isMiniMaxH3
+    seconds: String(payload.duration || (isMiniMaxH3 || isWan30 || isVideo933 ? 5 : 4)),
+  }
+  if (isVideo933) {
+    videoBody.resolution = model.endsWith('-480p') ? '480p' : '720p'
+  } else {
+    videoBody.size = isMiniMaxH3
       ? getMiniMaxH3Size(model)
       : isVideo25480p
         ? '864x496'
