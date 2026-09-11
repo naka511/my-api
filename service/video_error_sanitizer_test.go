@@ -33,6 +33,16 @@ func TestSanitizeVideo933DailyLimit(t *testing.T) {
 	require.Equal(t, video933DailyLimitMessage, publicError.Message)
 }
 
+func TestSanitizeVideo933DailyLimitWithUnderscores(t *testing.T) {
+	publicError := SanitizeVideoTaskFailureForModel(
+		"933-video2.0",
+		"RISK_DAILY_LIMIT; endpoint=/tools/image-video/generate",
+	)
+
+	require.Equal(t, "model_daily_restriction", publicError.Code)
+	require.Equal(t, video933DailyLimitMessage, publicError.Message)
+}
+
 func TestSanitizeVideo933DailyLimitDoesNotAffectOtherModels(t *testing.T) {
 	publicError := SanitizeVideoTaskFailureForModel(
 		"video-2.0",

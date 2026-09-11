@@ -90,7 +90,8 @@ func Video933DailyLimitError(model string, body []byte) *dto.OpenAIVideoError {
 
 func isVideo933DailyLimitFailureReason(reason string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(reason))
-	return containsAny(normalized, "risk daily limit") &&
+	normalized = strings.ReplaceAll(normalized, `\/`, "/")
+	return containsAny(normalized, "risk daily limit", "risk_daily_limit", "risk-daily-limit") &&
 		strings.Contains(normalized, "/tools/image-video/generate")
 }
 
