@@ -18,16 +18,14 @@ func SanitizeVideoTaskFailure(reason string) *dto.OpenAIVideoError {
 // SanitizeVideoTaskFailureForModel applies model-specific public error
 // mappings before falling back to the generic video error sanitization rules.
 func SanitizeVideoTaskFailureForModel(model, reason string) *dto.OpenAIVideoError {
-	normalizedModel := strings.ToLower(strings.TrimSpace(model))
 	normalized := strings.ToLower(strings.TrimSpace(reason))
+	if publicError := Video933DailyLimitError(model, []byte(reason)); publicError != nil {
+		return publicError
+	}
 	code := "upstream_service_error"
 	message := "Video generation failed. Please try again later."
 
 	switch {
-	case common.IsVideo933Model(normalizedModel) &&
-		isVideo933DailyLimitFailureReason(normalized):
-		code = "model_daily_restriction"
-		message = video933DailyLimitMessage
 	case containsAny(normalized,
 		"model_not_found",
 		"no available channel",
@@ -78,6 +76,18 @@ func SanitizeVideoTaskFailureForModel(model, reason string) *dto.OpenAIVideoErro
 	}
 }
 
+// Video933DailyLimitError returns the public error for the 933 daily-limit
+// response, or nil when the model/body does not match that exact condition.
+func Video933DailyLimitError(model string, body []byte) *dto.OpenAIVideoError {
+	if !common.IsVideo933Model(model) || !isVideo933DailyLimitFailureReason(string(body)) {
+		return nil
+	}
+	return &dto.OpenAIVideoError{
+		Code:    "model_daily_restriction",
+		Message: video933DailyLimitMessage,
+	}
+}
+
 func isVideo933DailyLimitFailureReason(reason string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(reason))
 	return containsAny(normalized, "risk daily limit") &&
@@ -103,6 +113,10 @@ func containsAny(s string, needles ...string) bool {
 }
 
 func SanitizeOpenAIVideoResponseBody(body []byte) []byte {
+	return SanitizeOpenAIVideoResponseBodyForModel("", body)
+}
+
+func SanitizeOpenAIVideoResponseBodyForModel(model string, body []byte) []byte {
 	var payload map[string]any
 	if err := common.Unmarshal(body, &payload); err != nil {
 		return body
@@ -116,7 +130,10 @@ func SanitizeOpenAIVideoResponseBody(body []byte) []byte {
 	if err != nil {
 		return body
 	}
-	model, _ := payload["model"].(string)
+	if strings.TrimSpace(model) == "" {
+		responseModel, _ := payload["model"].(string)
+		model = responseModel
+	}
 	publicError := SanitizeVideoTaskFailureForModel(model, string(errorBytes))
 	payload["error"] = map[string]any{
 		"code":    publicError.Code,

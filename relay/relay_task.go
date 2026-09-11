@@ -171,6 +171,13 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && (resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices) {
 		responseBody, _ := io.ReadAll(resp.Body)
+		if publicError := service.Video933DailyLimitError(prepared.ModelName, responseBody); publicError != nil {
+			return nil, &dto.TaskError{
+				Code:       publicError.Code,
+				Message:    publicError.Message,
+				StatusCode: resp.StatusCode,
+			}
+		}
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 
@@ -185,6 +192,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 11. 解析响应
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
+		if publicError := service.Video933DailyLimitError(prepared.ModelName, []byte(taskErr.Message)); publicError != nil {
+			taskErr.Code = publicError.Code
+			taskErr.Message = publicError.Message
+		}
 		return nil, taskErr
 	}
 
@@ -476,7 +487,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
 			}
-			respBody = service.SanitizeOpenAIVideoResponseBody(openAIVideoData)
+			respBody = service.SanitizeOpenAIVideoResponseBodyForModel(resolveTaskModelName(originTask), openAIVideoData)
 			return
 		}
 		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)

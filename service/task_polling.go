@@ -428,6 +428,13 @@ func shouldDelayVideoTaskFailure(task *model.Task, reason string, now int64) boo
 	return true
 }
 
+func shouldDelayVideoTaskFailureForTask(task *model.Task, reason string, now int64) bool {
+	if isVideo933Task(task) && isVideo933DailyLimitFailureReason(reason) {
+		return false
+	}
+	return shouldDelayVideoTaskFailure(task, reason, now)
+}
+
 func recordPendingVideoTaskFailure(task *model.Task, reason string, now int64) {
 	task.PrivateData.PendingFailureCount++
 	if task.PrivateData.PendingFailureFirstSeenAt == 0 {
@@ -555,7 +562,7 @@ func isVideo933Task(task *model.Task) bool {
 }
 
 func video933DailyLimitVideoTaskFailureReason(task *model.Task, responseBody []byte) string {
-	if !isVideo933Task(task) || !isVideo933DailyLimitFailureReason(string(responseBody)) {
+	if !isVideo933Task(task) || Video933DailyLimitError(video933TaskModelName(task), responseBody) == nil {
 		return ""
 	}
 
@@ -567,6 +574,24 @@ func video933DailyLimitVideoTaskFailureReason(task *model.Task, responseBody []b
 		}
 	}
 	return "RISK DAILY LIMIT;endpoint=/tools/image-video/generate"
+}
+
+func video933TaskModelName(task *model.Task) string {
+	if task == nil {
+		return ""
+	}
+	if common.IsVideo933Model(task.Properties.OriginModelName) {
+		return task.Properties.OriginModelName
+	}
+	if common.IsVideo933Model(task.Properties.UpstreamModelName) {
+		return task.Properties.UpstreamModelName
+	}
+	var data map[string]any
+	if err := common.Unmarshal(task.Data, &data); err == nil {
+		modelName, _ := data["model"].(string)
+		return modelName
+	}
+	return ""
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
@@ -676,7 +701,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	billingTransitionWon := false
 	quota := task.Quota
 
-	if taskResult.Status == model.TaskStatusFailure && shouldDelayVideoTaskFailure(task, taskResult.Reason, now) {
+	if taskResult.Status == model.TaskStatusFailure && shouldDelayVideoTaskFailureForTask(task, taskResult.Reason, now) {
 		recordPendingVideoTaskFailure(task, taskResult.Reason, now)
 		logger.LogWarn(ctx, fmt.Sprintf(
 			"Task %s got retryable upstream failure %d/%d, keep current status and retry next round: %s",
