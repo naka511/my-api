@@ -25,8 +25,7 @@ func SanitizeVideoTaskFailureForModel(model, reason string) *dto.OpenAIVideoErro
 
 	switch {
 	case common.IsVideo933Model(normalizedModel) &&
-		containsAny(normalized, "risk daily limit") &&
-		strings.Contains(normalized, "/tools/image-video/generate"):
+		isVideo933DailyLimitFailureReason(normalized):
 		code = "model_daily_restriction"
 		message = video933DailyLimitMessage
 	case containsAny(normalized,
@@ -77,6 +76,12 @@ func SanitizeVideoTaskFailureForModel(model, reason string) *dto.OpenAIVideoErro
 		Code:    code,
 		Message: message,
 	}
+}
+
+func isVideo933DailyLimitFailureReason(reason string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(reason))
+	return containsAny(normalized, "risk daily limit") &&
+		strings.Contains(normalized, "/tools/image-video/generate")
 }
 
 func publicVideoErrorType(code string) string {

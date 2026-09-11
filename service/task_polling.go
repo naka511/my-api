@@ -538,6 +538,37 @@ func noTokenVideoTaskFailureReason(responseBody []byte) string {
 	return ""
 }
 
+func isVideo933Task(task *model.Task) bool {
+	if task == nil {
+		return false
+	}
+	if common.IsVideo933Model(task.Properties.OriginModelName) || common.IsVideo933Model(task.Properties.UpstreamModelName) {
+		return true
+	}
+
+	var data map[string]any
+	if err := common.Unmarshal(task.Data, &data); err == nil {
+		modelName, _ := data["model"].(string)
+		return common.IsVideo933Model(modelName)
+	}
+	return false
+}
+
+func video933DailyLimitVideoTaskFailureReason(task *model.Task, responseBody []byte) string {
+	if !isVideo933Task(task) || !isVideo933DailyLimitFailureReason(string(responseBody)) {
+		return ""
+	}
+
+	var errorResult dto.GeneralErrorResponse
+	if err := common.Unmarshal(responseBody, &errorResult); err == nil {
+		message := strings.TrimSpace(errorResult.ToMessage())
+		if isVideo933DailyLimitFailureReason(message) {
+			return message
+		}
+	}
+	return "RISK DAILY LIMIT;endpoint=/tools/image-video/generate"
+}
+
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
 	baseURL := constant.ChannelBaseURLs[ch.Type]
 	if ch.GetBaseURL() != "" {
@@ -575,8 +606,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	snap := task.Snapshot()
 
 	taskResult := &relaycommon.TaskInfo{}
+	// 933 日限额错误是明确终态，必须立即失败，不能进入重试确认流程。
+	if reason := video933DailyLimitVideoTaskFailureReason(task, responseBody); reason != "" {
+		taskResult = relaycommon.FailTaskInfo(reason)
+		logger.LogWarn(ctx, fmt.Sprintf("Task %s failed immediately because the 933 model reached its daily limit: %s", taskId, reason))
 	// Token 池耗尽是明确终态，必须优先于普通任务状态解析，不能进入重试确认流程。
-	if reason := noTokenVideoTaskFailureReason(responseBody); reason != "" {
+	} else if reason := noTokenVideoTaskFailureReason(responseBody); reason != "" {
 		taskResult = relaycommon.FailTaskInfo(reason)
 		logger.LogWarn(ctx, fmt.Sprintf("Task %s failed immediately because upstream has no available token: %s", taskId, reason))
 	} else {

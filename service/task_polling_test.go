@@ -80,6 +80,25 @@ func (a *noTokenPollingAdaptor) AdjustBillingOnComplete(task *model.Task, taskRe
 	return 0
 }
 
+type video933DailyLimitPollingAdaptor struct{}
+
+func (a *video933DailyLimitPollingAdaptor) Init(info *relaycommon.RelayInfo) {}
+
+func (a *video933DailyLimitPollingAdaptor) FetchTask(baseURL string, key string, body map[string]any, proxy string) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"RISK DAILY LIMIT;endpoint=/tools/image-video/generate","type":"server_error"}}`)),
+	}, nil
+}
+
+func (a *video933DailyLimitPollingAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
+	return &relaycommon.TaskInfo{}, nil
+}
+
+func (a *video933DailyLimitPollingAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	return 0
+}
+
 type failurePollingAdaptor struct {
 	reason string
 }
@@ -207,6 +226,45 @@ func TestUpdateVideoSingleTaskFailsImmediatelyOnNoTokenError(t *testing.T) {
 	require.Equal(t, model.TaskStatus(model.TaskStatusFailure), updated.Status)
 	require.Equal(t, "100%", updated.Progress)
 	require.Equal(t, "no token", updated.FailReason)
+}
+
+func TestUpdateVideoSingleTaskFailsImmediatelyOnVideo933DailyLimit(t *testing.T) {
+	truncate(t)
+
+	ch := &model.Channel{
+		Id:     1,
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    "test-key",
+		Name:   "test-channel",
+		Status: common.ChannelStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(ch).Error)
+
+	task := &model.Task{
+		TaskID:    "public_task",
+		ChannelId: 1,
+		Platform:  constant.TaskPlatform("1"),
+		Status:    model.TaskStatusInProgress,
+		Progress:  "30%",
+		Properties: model.Properties{
+			OriginModelName: "933-video2.0",
+		},
+		PrivateData: model.TaskPrivateData{
+			UpstreamTaskID: "upstream_task",
+		},
+	}
+	require.NoError(t, task.Insert())
+
+	err := updateVideoSingleTask(context.Background(), &video933DailyLimitPollingAdaptor{}, ch, "upstream_task", map[string]*model.Task{
+		"upstream_task": task,
+	})
+	require.NoError(t, err)
+
+	var updated model.Task
+	require.NoError(t, model.DB.First(&updated, task.ID).Error)
+	require.Equal(t, model.TaskStatus(model.TaskStatusFailure), updated.Status)
+	require.Equal(t, "100%", updated.Progress)
+	require.Contains(t, updated.FailReason, "RISK DAILY LIMIT")
 }
 
 func TestUpdateVideoSingleTaskDelaysRetryableFailure(t *testing.T) {
