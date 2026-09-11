@@ -154,3 +154,20 @@ func TestBuildVideo2AsyncTaskResponseSanitizesUpstreamFailure(t *testing.T) {
 	require.NotContains(t, string(body), "model_not_found")
 	require.NotContains(t, string(body), "No available channel")
 }
+
+func TestBuildVideo2AsyncTaskResponseSanitizesVideo933DailyLimit(t *testing.T) {
+	task := &model.Task{
+		TaskID:     "task_public",
+		Status:     model.TaskStatusFailure,
+		Progress:   "100%",
+		FailReason: `RISK DAILY LIMIT;endpoint=/tools/image-video/generate`,
+		Properties: model.Properties{
+			OriginModelName: "933-video2.0",
+		},
+	}
+
+	resp := buildVideo2AsyncTaskResponse(task)
+	require.NotNil(t, resp.Error)
+	require.Equal(t, "model_daily_restriction", resp.Error.Code)
+	require.Equal(t, "Today's model has been restricted, please use it after 8 o'clock tomorrow morning.", resp.Error.Message)
+}

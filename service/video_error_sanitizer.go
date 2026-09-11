@@ -7,14 +7,28 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 )
 
+const video933DailyLimitMessage = "Today's model has been restricted, please use it after 8 o'clock tomorrow morning."
+
 // SanitizeVideoTaskFailure maps upstream/internal task failure details to a
 // public error that is safe to expose to downstream callers.
 func SanitizeVideoTaskFailure(reason string) *dto.OpenAIVideoError {
+	return SanitizeVideoTaskFailureForModel("", reason)
+}
+
+// SanitizeVideoTaskFailureForModel applies model-specific public error
+// mappings before falling back to the generic video error sanitization rules.
+func SanitizeVideoTaskFailureForModel(model, reason string) *dto.OpenAIVideoError {
+	normalizedModel := strings.ToLower(strings.TrimSpace(model))
 	normalized := strings.ToLower(strings.TrimSpace(reason))
 	code := "upstream_service_error"
 	message := "Video generation failed. Please try again later."
 
 	switch {
+	case common.IsVideo933Model(normalizedModel) &&
+		containsAny(normalized, "risk daily limit") &&
+		strings.Contains(normalized, "/tools/image-video/generate"):
+		code = "model_daily_restriction"
+		message = video933DailyLimitMessage
 	case containsAny(normalized,
 		"model_not_found",
 		"no available channel",
@@ -97,7 +111,8 @@ func SanitizeOpenAIVideoResponseBody(body []byte) []byte {
 	if err != nil {
 		return body
 	}
-	publicError := SanitizeVideoTaskFailure(string(errorBytes))
+	model, _ := payload["model"].(string)
+	publicError := SanitizeVideoTaskFailureForModel(model, string(errorBytes))
 	payload["error"] = map[string]any{
 		"code":    publicError.Code,
 		"message": publicError.Message,

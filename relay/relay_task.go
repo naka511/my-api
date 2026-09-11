@@ -518,12 +518,13 @@ func buildVideo2AsyncTaskResponse(task *model.Task) video2AsyncTaskResponse {
 	if createdAt == 0 {
 		createdAt = task.CreatedAt
 	}
+	modelName := resolveTaskModelName(task)
 
 	resp := video2AsyncTaskResponse{
 		ID:        task.TaskID,
 		TaskID:    task.TaskID,
 		Object:    "video",
-		Model:     resolveTaskModelName(task),
+		Model:     modelName,
 		Status:    status,
 		Progress:  progress,
 		CreatedAt: createdAt,
@@ -537,7 +538,7 @@ func buildVideo2AsyncTaskResponse(task *model.Task) video2AsyncTaskResponse {
 	}
 
 	if status == dto.VideoStatusFailed {
-		resp.Error = service.SanitizeVideoTaskFailure(strings.TrimSpace(task.FailReason))
+		resp.Error = service.SanitizeVideoTaskFailureForModel(modelName, strings.TrimSpace(task.FailReason))
 	}
 
 	if status == dto.VideoStatusCompleted || status == dto.VideoStatusFailed {

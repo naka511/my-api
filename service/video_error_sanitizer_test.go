@@ -22,3 +22,32 @@ func TestSanitizeOpenAIVideoResponseBody(t *testing.T) {
 	require.NotContains(t, string(sanitized), "request id")
 	require.NotContains(t, string(sanitized), "model_not_found")
 }
+
+func TestSanitizeVideo933DailyLimit(t *testing.T) {
+	publicError := SanitizeVideoTaskFailureForModel(
+		"933-video2.0-mini-480p",
+		"RISK DAILY LIMIT;endpoint=/tools/image-video/generate",
+	)
+
+	require.Equal(t, "model_daily_restriction", publicError.Code)
+	require.Equal(t, video933DailyLimitMessage, publicError.Message)
+}
+
+func TestSanitizeVideo933DailyLimitDoesNotAffectOtherModels(t *testing.T) {
+	publicError := SanitizeVideoTaskFailureForModel(
+		"video-2.0",
+		"RISK DAILY LIMIT;endpoint=/tools/image-video/generate",
+	)
+
+	require.NotEqual(t, "model_daily_restriction", publicError.Code)
+	require.NotEqual(t, video933DailyLimitMessage, publicError.Message)
+}
+
+func TestSanitizeOpenAIVideoResponseBodyForVideo933DailyLimit(t *testing.T) {
+	body := []byte(`{"model":"933-video2.0","status":"failed","error":{"message":"RISK DAILY LIMIT;endpoint=/tools/image-video/generate","type":"server_error"}}`)
+
+	sanitized := SanitizeOpenAIVideoResponseBody(body)
+
+	require.Contains(t, string(sanitized), video933DailyLimitMessage)
+	require.NotContains(t, string(sanitized), "RISK DAILY LIMIT")
+}
