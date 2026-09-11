@@ -734,6 +734,13 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 }
 
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	failReason := task.FailReason
+	if task.Status == model.TaskStatusFailure {
+		if publicError := service.Video933DailyLimitError(resolveTaskModelName(task), []byte(failReason)); publicError != nil {
+			failReason = publicError.Message
+		}
+	}
+
 	return &dto.TaskDto{
 		ID:             task.ID,
 		CreatedAt:      task.CreatedAt,
@@ -746,7 +753,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Quota:          task.Quota,
 		Action:         task.Action,
 		Status:         string(task.Status),
-		FailReason:     task.FailReason,
+		FailReason:     failReason,
 		ResultURL:      task.GetResultURL(),
 		ContentPreview: task.ContentPreview,
 		SubmitTime:     task.SubmitTime,

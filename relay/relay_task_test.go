@@ -171,3 +171,17 @@ func TestBuildVideo2AsyncTaskResponseSanitizesVideo933DailyLimit(t *testing.T) {
 	require.Equal(t, "model_daily_restriction", resp.Error.Code)
 	require.Equal(t, "Today's model has been restricted, please use it after 8 o'clock tomorrow morning.", resp.Error.Message)
 }
+
+func TestTaskModel2DtoSanitizesVideo933DailyLimit(t *testing.T) {
+	task := &model.Task{
+		TaskID:     "task_public",
+		Status:     model.TaskStatusFailure,
+		FailReason: `RISK_DAILY_LIMIT; endpoint=/tools/image-video/generate`,
+		Properties: model.Properties{
+			OriginModelName: "933-video2.0",
+		},
+	}
+
+	publicTask := TaskModel2Dto(task)
+	require.Equal(t, "Today's model has been restricted, please use it after 8 o'clock tomorrow morning.", publicTask.FailReason)
+}
